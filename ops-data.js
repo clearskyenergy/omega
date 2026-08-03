@@ -696,17 +696,36 @@
   /* Upload one file and return the metadata row to append. Progress is
      reported so a 30 MB permit set doesn't look like a hung button. */
   function uploadFile(req, file, key, onProgress) {
-    var st = storage();
-    if (!st) return Promise.reject(new Error('Storage SDK not loaded on this page.'));
+    /* Validate the FILE before checking the connection. A 60 MB .mov should
+       be told it's a 60 MB .mov, not "storage not loaded" — the second
+       message sends the rep to look at the wrong thing entirely. */
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
       return Promise.reject(new Error(file.name + ' is ' + Math.round(file.size / 1048576)
         + ' MB. The cap is ' + MAX_FILE_MB + ' MB \u2014 put anything larger on a shared '
         + 'drive and paste the link instead.'));
     }
+    /* Mirror okDeliverable() in storage.rules. Not a control — the rules are
+       — but a rejected upload otherwise surfaces as an opaque
+       "storage/unauthorized", which reads as a broken button rather than an
+       unsupported file. Browsers report unknown types (DWG, DXF) as '', which
+       we send as application/octet-stream and the rules allow. */
+    var ct = file.type || 'application/octet-stream';
+    var okType = /^application\/pdf$/.test(ct) || /^image\//.test(ct)
+              || /^application\/vnd/.test(ct)  || /^text\//.test(ct)
+              || /^application\/(zip|x-zip-compressed|octet-stream)$/.test(ct);
+    if (!okType) {
+      return Promise.reject(new Error(file.name + ' is a ' + ct + ', which storage refuses. '
+        + 'PDF, images, Office files, text, zip and CAD exports go through \u2014 put anything '
+        + 'else in a zip first.'));
+    }
+
+    var st = storage();
+    if (!st) return Promise.reject(new Error('Storage SDK not loaded on this page.'));
+
     var id = 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
     var path = filePath(req, id, file.name);
     var task = st.ref(path).put(file, {
-      contentType: file.type || 'application/octet-stream',
+      contentType: ct,
       customMetadata: { intakeId: String(req.intakeId || req.id), orgId: String(req.orgId || '') }
     });
     return new Promise(function (resolve, reject) {
