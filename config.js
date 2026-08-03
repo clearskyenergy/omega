@@ -173,18 +173,26 @@ window.CLEARSKY_CONFIG = {
        Commission = quote.total × rate, earned when status reaches
        payableStatus.
 
-       'delivered' is intake_projects' terminal state, so that's the default.
-       The console does NOT invent a 'completed' status: intake-admin.html
-       reads these same records and would show an unknown state.
+       'delivered' is intake_projects' terminal state (STATUS in
+       omega-intake.js), so that's the default. omega-intake.js also stamps
+       completedAt when a record reaches it, which is where the delivery date
+       comes from — there is no separate deliveredAt field.
 
-       If you'd rather pay on client sign-off than on issue, add that status
-       to omega-intake.js AND intake-admin.html first, then point this at it.
-       Nothing else here changes.
+       The console invents no statuses: intake-admin.html reads these same
+       records and would show an unknown state. If you'd rather pay on client
+       sign-off than on issue, add that status to omega-intake.js AND
+       intake-admin.html first, then point this at it.
 
        There is no commission rate in intake_projects, so it comes from
-       defaultCommissionRate unless a record carries its own. paidAt moves a
-       payout from Pending to Paid and is never set automatically — payroll
-       does it, or you do, from the intake.                                  */
+       defaultCommissionRate unless a record carries its own.
+
+       TWO DIFFERENT PAYMENTS, two different fields — don't merge them:
+         quote.paidAt        the CLIENT settled their invoice with Omega
+         commissionPaidAt    the REP was paid their cut by payroll
+       Reusing quote.paidAt for both would mark a rep paid the moment the
+       customer's money landed, which is weeks early and not payroll's call.
+       commissionPaidAt is written only from the Earnings view, by an
+       administrator, and never automatically.                               */
     payableStatus: 'delivered',
     defaultCommissionRate: 0.05,
     currency: 'USD'

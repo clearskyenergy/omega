@@ -159,18 +159,30 @@ and the drawer says so before they click.
 
 ---
 
-## Field mapping is provisional
+## Field mapping — confirmed against `omega-intake.js`
 
-`omega-intake.js` hasn't been read directly, so every field resolves through
-`pick()` against several candidate paths — `customer.company`, `site.address`,
-`admin.assignee`, `quote.total` and so on.
+Mapped from the real schema, not guessed. The six that would have been wrong:
 
-Where nothing matches, the drawer renders **Fields the console didn't recognise**
-with the raw JSON, so a wrong guess is visible and correctable rather than
-silently blank. Send `omega-intake.js`, `intake.html` and `intake-admin.html`
-and the candidate lists tighten; nothing else needs to change.
+| Concept | Actual field | Why it mattered |
+|---|---|---|
+| What they asked for | `deliverables[].requested` | `scope` is the **site** description — a map of `{bess:{enabled:true}, l2:{enabled:false}}`. Reading it as a truthy map marks every package requested, because `{enabled:false}` is itself truthy. Would have shown 7 deliverables on a job that asked for 1. |
+| Linked editor project | `editorProjectId` | not `projectId` — the **Open in editor** button would never appear |
+| Delivery date | `completedAt` | stamped by `omega-intake.js` on delivery; there is no `deliveredAt` |
+| Activity log | `{ts, type, message, actor}` | this console previously wrote `{at, text, byName}` — a second shape in the same array renders as blanks in `intake-admin.html` |
+| Assignee | `admin.assignee` | a top-level `assignedTo` would assign it here and nowhere else |
+| Priority | `admin.priority`, seeded `'normal'` | not `'standard'`, so every intake would have fallen through to an unmapped priority |
 
----
+Also now handled: `in_review` and `changes_requested` (both were missing), site
+scopes rendered with their own numbers (`powerMw`, `dcKw`, `ports`…), the
+client's linked Drive/Dropbox files, and deliverable progress — *3 of 5 done* —
+read off each deliverable's own `status`/`outputUrl`.
+
+**The two payments are kept apart.** `quote.paidAt` means the client settled
+their invoice; `commissionPaidAt` means payroll paid the rep. Reusing the first
+for the second would mark a rep paid the moment the customer's money landed.
+
+Anything still unrecognised renders in the drawer under *Fields the console
+didn't recognise* with raw JSON — on a real-shaped record that panel is empty.
 
 ## What's in here
 
