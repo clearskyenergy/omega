@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project intake · ClearSky-OMEGA</title>
+<link rel="icon" href="/omega-logo.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --sap-blue:#0070F2; --sap-blue-hi:#1B90FF; --sap-ink:#1D2D3E; --sap-ink-2:#556B82;
+  --sap-page:#EDEFF1; --sap-card-border:#E4E8EC; --cs-navy:#08384F; --cs-accent:#00A9A4;
+  --cs-sub:#5A7180; --ok:#16A34A; --warn:#D97706; --bad:#DC2626;
+  --shadow:0 1px 2px rgba(20,40,60,.05);
+}
+body{font-family:'DM Sans',sans-serif;background:var(--sap-page);color:var(--sap-ink);
+  min-height:100vh;-webkit-font-smoothing:antialiased}
+.mono{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums}
+a{color:var(--sap-blue)}
+:focus-visible{outline:2px solid var(--sap-blue-hi);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+#topbar{height:56px;background:#fff;display:flex;align-items:center;padding:0 18px;
+  border-bottom:1px solid #E5E9ED;box-shadow:var(--shadow);position:sticky;top:0;z-index:20}
+.tb-logo{display:flex;align-items:center;gap:9px;text-decoration:none}
+.tb-omega{height:28px;border-radius:6px;display:block}
+.tb-logo-txt{color:var(--sap-ink);font-weight:700;font-size:15px;letter-spacing:-.2px}
+.tb-logo-txt span{color:var(--sap-blue)}
+.tb-sep{width:1px;height:22px;background:#E5E9ED;margin:0 14px}
+.tb-portal{color:var(--sap-ink-2);font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.tb-spacer{flex:1}
+.btn-sm{background:#fff;border:1px solid #DDE3E9;color:var(--sap-ink-2);border-radius:7px;
+  padding:6px 12px;cursor:pointer;font:500 12px 'DM Sans',sans-serif;text-decoration:none;display:inline-block}
+.btn-sm:hover{border-color:var(--sap-blue);color:var(--sap-blue)}
+
+#wrap{max-width:760px;margin:0 auto;padding:30px 20px 70px}
+.ph-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#8FA0AE}
+h1{font-size:26px;font-weight:700;color:var(--cs-navy);letter-spacing:-.5px;margin-top:4px}
+.lede{font-size:14px;color:var(--cs-sub);margin-top:8px;line-height:1.6;max-width:62ch}
+
+.card{background:#fff;border:1px solid var(--sap-card-border);border-radius:10px;
+  box-shadow:var(--shadow);margin-top:20px}
+.card-h{padding:14px 20px;border-bottom:1px solid var(--sap-card-border)}
+.card-h h2{font-size:14.5px;font-weight:700;color:var(--cs-navy)}
+.card-h .sub{font-size:11.5px;color:var(--sap-ink-2);margin-top:2px;line-height:1.5}
+.card-b{padding:18px 20px}
+
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row.three{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:640px){.row,.row.three{grid-template-columns:1fr}}
+.fld{margin-bottom:14px}
+.fld:last-child{margin-bottom:0}
+.fld label{display:block;font-size:11px;font-weight:600;color:var(--sap-ink-2);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px}
+.fld .hint{font-size:11.5px;color:#8FA0AE;margin-top:5px;line-height:1.5}
+.fld input,.fld select,.fld textarea{width:100%;border:1.5px solid #DDE3E9;border-radius:8px;
+  padding:10px 12px;font:400 14px 'DM Sans',sans-serif;color:var(--sap-ink);background:#fff;outline:none}
+.fld textarea{min-height:96px;resize:vertical;line-height:1.55}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--sap-blue)}
+.fld input.bad,.fld select.bad{border-color:var(--bad);background:#FFF8F8}
+.req{color:var(--bad);margin-left:2px}
+
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:640px){.checks{grid-template-columns:1fr}}
+.check{display:flex;align-items:center;gap:9px;border:1.5px solid #E4E8EC;border-radius:8px;
+  padding:9px 12px;cursor:pointer;font-size:13px;transition:border-color .12s,background .12s}
+.check:hover{border-color:#C4D3E2}
+.check input{width:15px;height:15px;accent-color:var(--sap-blue);flex:none}
+.check.on{border-color:var(--sap-blue);background:#F3F8FF}
+
+.prio{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.prio button{border:1.5px solid #E4E8EC;background:#fff;border-radius:8px;padding:11px 8px;
+  cursor:pointer;text-align:center;transition:all .12s}
+.prio button b{display:block;font-size:13px;font-weight:700;color:var(--cs-navy)}
+.prio button span{display:block;font:500 11px 'DM Mono',monospace;color:#8FA0AE;margin-top:3px}
+.prio button.on{border-color:var(--sap-blue);background:#F3F8FF}
+.prio button.on b{color:var(--sap-blue)}
+
+.btn{border:none;border-radius:8px;padding:12px 20px;font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.btn-p{background:var(--sap-blue);color:#fff}
+.btn-p:hover:not(:disabled){background:var(--sap-blue-hi)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.actions{display:flex;gap:10px;align-items:center;margin-top:20px;flex-wrap:wrap}
+.actions .note{font-size:12px;color:#8FA0AE;line-height:1.5}
+
+.msg{border-radius:10px;padding:13px 16px;font-size:13px;line-height:1.55;margin-top:18px;display:none}
+.msg.err{background:#FDECEC;color:#7F1D1D;border:1px solid #F3C9C9;display:block}
+.msg.info{background:#EAF2FB;color:#1B4A7A;border:1px solid #CBDDF0;display:block}
+.msg b{display:block;margin-bottom:3px}
+
+.done{text-align:center;padding:52px 24px}
+.done .tick{width:54px;height:54px;border-radius:50%;background:#E6F6EB;color:var(--ok);
+  display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.done h2{font-size:20px;color:var(--cs-navy);font-weight:700;letter-spacing:-.3px}
+.done p{font-size:14px;color:var(--cs-sub);margin-top:9px;line-height:1.6;max-width:46ch;
+  margin-left:auto;margin-right:auto}
+.done .sla{margin-top:18px;display:inline-block;background:#F4F7FA;border:1px solid #E4E8EC;
+  border-radius:8px;padding:10px 16px;font-size:13px;color:var(--sap-ink)}
+.done .sla b{font-family:'DM Mono',monospace}
+
+#gate{max-width:420px;margin:80px auto;text-align:center;padding:0 20px}
+#gate h2{font-size:18px;color:var(--cs-navy);margin-bottom:8px}
+#gate p{font-size:13.5px;color:var(--cs-sub);line-height:1.6}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <a href="/" class="tb-logo">
+    <img src="/omega-logo.png" alt="ClearSky-OMEGA" class="tb-omega" onerror="this.style.display='none'">
+    <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  </a>
+  <div class="tb-sep"></div>
+  <span class="tb-portal">Project intake</span>
+  <div class="tb-spacer"></div>
+  <a class="btn-sm" href="/" id="back-link">Back to console</a>
+</div>
+
+<div id="gate" style="display:none">
+  <h2 id="gate-h">Checking access…</h2>
+  <p id="gate-p"></p>
+</div>
+
+<div id="wrap" style="display:none">
+  <div class="ph-eyebrow" id="eyebrow">New request</div>
+  <h1 id="title">Project intake</h1>
+  <p class="lede" id="lede">Tell us what you need built. This goes straight into the ClearSky
+     delivery queue with a response clock attached, so it can't sit unanswered.</p>
+
+  <!-- ── Client ── -->
+  <div class="card" id="card-client">
+    <div class="card-h">
+      <h2>Who this is for</h2>
+      <div class="sub">The tenant the finished project will land in. Getting this wrong puts
+        the work in the wrong portal.</div>
+    </div>
+    <div class="card-b">
+      <div class="row">
+        <div class="fld">
+          <label for="f-org">Client<span class="req">*</span></label>
+          <select id="f-org" onchange="orgChanged()"></select>
+        </div>
+        <div class="fld" id="fld-neworg" style="display:none">
+          <label for="f-neworg">New client domain<span class="req">*</span></label>
+          <input id="f-neworg" placeholder="acmeenergy.com" autocapitalize="off" spellcheck="false">
+          <div class="hint">Their mail domain, exactly as it's set in their deployment's config.</div>
+        </div>
+      </div>
+      <div class="row three">
+        <div class="fld">
+          <label for="f-contact">Contact name<span class="req">*</span></label>
+          <input id="f-contact" autocomplete="name">
+        </div>
+        <div class="fld">
+          <label for="f-email">Contact email<span class="req">*</span></label>
+          <input id="f-email" type="email" autocomplete="email">
+        </div>
+        <div class="fld">
+          <label for="f-phone">Phone</label>
+          <input id="f-phone" type="tel" autocomplete="tel">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Project ── -->
+  <div class="card">
+    <div class="card-h">
+      <h2>The project</h2>
+      <div class="sub">Enough to start drawing. Anything you don't know yet can go in the notes.</div>
+    </div>
+    <div class="card-b">
+      <div class="fld">
+        <label for="f-name">Project name<span class="req">*</span></label>
+        <input id="f-name" placeholder="e.g. Munich DC — 4h BESS">
+      </div>
+      <div class="row">
+        <div class="fld">
+          <label for="f-type">Project type</label>
+          <select id="f-type"></select>
+        </div>
+        <div class="fld">
+          <label for="f-addr">Site address or location</label>
+          <input id="f-addr" placeholder="City, state / country">
+        </div>
+      </div>
+      <div class="row">
+        <div class="fld">
+          <label for="f-mw">Power (MW)</label>
+          <input id="f-mw" type="number" min="0" step="0.1" placeholder="12.5">
+        </div>
+        <div class="fld">
+          <label for="f-hrs">Duration (hours)</label>
+          <input id="f-hrs" type="number" min="0" step="0.5" placeholder="4">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Scope ── -->
+  <div class="card">
+    <div class="card-h">
+      <h2>What you need back</h2>
+      <div class="sub">Pick everything that applies. This is what gets built and delivered.</div>
+    </div>
+    <div class="card-b">
+      <div class="checks" id="scope-list"></div>
+      <div class="fld" style="margin-top:16px">
+        <label for="f-notes">Anything else we should know</label>
+        <textarea id="f-notes" placeholder="Deadlines that aren't obvious, utility requirements, constraints on the site, who else is involved…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Timing ── -->
+  <div class="card">
+    <div class="card-h">
+      <h2>How urgent</h2>
+      <div class="sub" id="prio-sub">Sets the response target — how quickly a person replies,
+        not how quickly the work is finished.</div>
+    </div>
+    <div class="card-b">
+      <div class="prio" id="prio-list"></div>
+      <div class="fld" style="margin-top:16px">
+        <label for="f-due">Hard deadline (optional)</label>
+        <input id="f-due" type="date">
+        <div class="hint">If you have a date that can't move — a utility submission, a board
+          meeting — put it here and it drives the pipeline instead of the default.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Commercials (staff only) ── -->
+  <div class="card" id="card-money">
+    <div class="card-h">
+      <h2>Commercials</h2>
+      <div class="sub">Staff only — clients never see this. Commission is calculated from these
+        two numbers and pays out when the client signs off. Both can be edited later from the
+        request.</div>
+    </div>
+    <div class="card-b">
+      <div class="row three">
+        <div class="fld">
+          <label for="f-value">Contract value (USD)</label>
+          <input id="f-value" type="number" min="0" step="500" placeholder="0" oninput="previewPay()">
+        </div>
+        <div class="fld">
+          <label for="f-rate">Commission rate (%)</label>
+          <input id="f-rate" type="number" min="0" max="100" step="0.5" oninput="previewPay()">
+        </div>
+        <div class="fld">
+          <label>Commission on completion</label>
+          <input id="f-pay" class="mono" readonly value="$0" style="background:#F7F9FB;color:#0B7C78;font-weight:500">
+        </div>
+      </div>
+      <label class="check" id="assign-me-wrap" style="margin-top:4px">
+        <input type="checkbox" id="f-assign" checked>
+        <span>Assign this to me and count it as answered — I'm logging it after speaking to them</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="msg" id="msg"></div>
+
+  <div class="actions">
+    <button class="btn btn-p" id="submit-btn" onclick="submitForm()">Submit request</button>
+    <button class="btn btn-sm" style="padding:12px 18px" onclick="location.href='/'" id="cancel-btn">Cancel</button>
+    <div class="note" id="foot-note"></div>
+  </div>
+</div>
+
+<!-- ── Confirmation ── -->
+<div id="wrap-done" style="display:none">
+  <div class="done">
+    <div class="tick">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
+    </div>
+    <h2 id="done-h">Request submitted</h2>
+    <p id="done-p"></p>
+    <div class="sla" id="done-sla"></div>
+    <div class="actions" style="justify-content:center;margin-top:24px">
+      <button class="btn btn-p" onclick="location.href='/'" id="done-primary">Back to the console</button>
+      <button class="btn btn-sm" style="padding:12px 18px" onclick="location.reload()">Submit another</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="/config.js"></script>
+<script src="/omega-brand.js"></script>
+<script src="/ops-data.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   PROJECT INTAKE
+
+   Two audiences, one form:
+
+     STAFF MODE (default) — a signed-in ClearSky account logging a request,
+     usually straight after a call. Full form including commercials, and the
+     option to mark it answered on the spot, because it already was: the call
+     WAS the first response, and starting a response clock on a request you
+     just discussed would report a lie.
+
+     CLIENT MODE — a shared link with no sign-in, e.g.
+     /intake.html?client=fenecon.com. Off unless ops.publicIntake is true in
+     config.js AND a Firestore rule allows unauthenticated create. Commercials
+     are hidden and the request always lands as `new` with the clock running.
+   ══════════════════════════════════════════════════════════════════════════ */
+var D = OpsData;
+var MODE = 'staff';            // 'staff' | 'client'
+var ME = { email:'', name:'' };
+var auth, db, PRIORITY = 'standard', PARAM = {};
+
+(function parseQuery(){
+  var q = location.search.replace(/^\?/, '').split('&');
+  for (var i = 0; i < q.length; i++){
+    var kv = q[i].split('=');
+    if (kv[0]) PARAM[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || '');
+  }
+})();
+
+(function boot(){
+  if (typeof firebase === 'undefined' || !window.CLEARSKY_CONFIG){ setTimeout(boot, 120); return; }
+  try { firebase.initializeApp(window.CLEARSKY_CONFIG.firebase); }
+  catch(e){ if(!/already exists/.test(e.message)) console.error(e); }
+  auth = firebase.auth();
+  db   = firebase.firestore();
+
+  var ops = window.CLEARSKY_CONFIG.ops || {};
+  var wantsClient = !!PARAM.client;
+
+  auth.onAuthStateChanged(function(user){
+    var staffWs = user ? OmegaBrand.resolve(user.email || '', {}) : null;
+
+    if (staffWs){
+      MODE = 'staff';
+      ME.email = (user.email || '').toLowerCase();
+      ME.name  = user.displayName || ME.email.split('@')[0];
+      D.init(db, ME);
+      start();
+      return;
+    }
+
+    /* Not staff. A client link only works if this deployment opted in. */
+    if (wantsClient && ops.publicIntake === true){
+      MODE = 'client';
+      D.init(db, { email:'', name:'' });
+      start();
+      return;
+    }
+
+    gate(user
+      ? 'This form is for ClearSky staff'
+      : 'Sign in to submit a request',
+      user
+        ? 'The account ' + (user.email || '') + ' isn\u2019t a ClearSky staff address. If you\u2019re '
+          + 'a client, send your request to ' + (ops.intakeReplyTo || 'dev@clearsky-usa.com') + ' '
+          + 'and we\u2019ll log it for you.'
+        : 'Open the ops console and sign in with your ClearSky account, then come back here.');
+  });
+})();
+
+function gate(h, p){
+  document.getElementById('gate').style.display = 'block';
+  document.getElementById('gate-h').textContent = h;
+  document.getElementById('gate-p').innerHTML = D.esc(p)
+    + '<div style="margin-top:16px"><a class="btn-sm" href="/">Go to the console</a></div>';
+}
+
+/* ── Build the form ───────────────────────────────────────────────────── */
+function start(){
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('wrap').style.display = 'block';
+
+  var ops = window.CLEARSKY_CONFIG.ops || {};
+  var isClient = (MODE === 'client');
+
+  if (isClient){
+    var org = PARAM.client;
+    document.getElementById('eyebrow').textContent = D.tenantName(org);
+    document.getElementById('title').textContent = 'Request a project';
+    document.getElementById('lede').textContent =
+      'Tell the ClearSky team what you need built. Someone picks this up and replies — '
+      + 'you\u2019ll hear back well inside a working day.';
+    document.getElementById('card-money').style.display = 'none';
+    document.getElementById('card-client').querySelector('.sub').textContent =
+      'So we know who to reply to.';
+    document.getElementById('prio-sub').textContent =
+      'This sets how quickly a person gets back to you.';
+    document.getElementById('back-link').style.display = 'none';
+    document.getElementById('cancel-btn').style.display = 'none';
+    document.getElementById('foot-note').textContent =
+      'Goes to ' + (ops.intakeReplyTo || 'the ClearSky team') + '.';
+  } else {
+    document.getElementById('foot-note').textContent =
+      'Lands in the intake queue immediately.';
+  }
+
+  // Client select
+  var sel = document.getElementById('f-org');
+  var tenants = (ops.tenants || []).slice();
+  if (isClient){
+    var org2 = PARAM.client;
+    sel.innerHTML = '<option value="'+D.esc(org2)+'">'+D.esc(D.tenantName(org2))+'</option>';
+    sel.disabled = true;
+  } else {
+    sel.innerHTML = '<option value="">Select a client…</option>'
+      + tenants.map(function(t){
+          return '<option value="'+D.esc(t.orgId)+'">'+D.esc(t.name)+' — '+D.esc(t.orgId)+'</option>';
+        }).join('')
+      + '<option value="__new">+ A client not on this list</option>';
+    if (PARAM.client) sel.value = PARAM.client;
+  }
+
+  // Type
+  document.getElementById('f-type').innerHTML = D.TYPES.map(function(t){
+    return '<option value="'+t.key+'">'+D.esc(t.label)+'</option>';
+  }).join('');
+
+  // Scope
+  document.getElementById('scope-list').innerHTML = D.SCOPE.map(function(s){
+    return '<label class="check" data-scope="'+s.key+'">'
+      + '<input type="checkbox" value="'+s.key+'" onchange="this.closest(\'.check\')'
+      + '.classList.toggle(\'on\', this.checked)"><span>'+D.esc(s.label)+'</span></label>';
+  }).join('');
+
+  // Priority, labelled with the actual target so the choice means something
+  var sla = ops.sla || { critical:2, rush:8, standard:24 };
+  document.getElementById('prio-list').innerHTML = D.PRIORITY.slice().reverse().map(function(p){
+    return '<button type="button" data-p="'+p.key+'" onclick="setPriority(\''+p.key+'\')"'
+      + (p.key === 'standard' ? ' class="on"' : '') + '>'
+      + '<b>'+p.label+'</b><span>reply in '+(sla[p.key])+'h</span></button>';
+  }).join('');
+
+  // Commission default
+  var rate = ops.defaultCommissionRate;
+  document.getElementById('f-rate').value = (rate == null ? 5 : rate * 100);
+  previewPay();
+
+  if (PARAM.name)  document.getElementById('f-name').value = PARAM.name;
+  if (PARAM.email) document.getElementById('f-email').value = PARAM.email;
+
+  orgChanged();
+}
+
+function orgChanged(){
+  var v = document.getElementById('f-org').value;
+  document.getElementById('fld-neworg').style.display = (v === '__new') ? 'block' : 'none';
+}
+
+function setPriority(k){
+  PRIORITY = k;
+  var b = document.querySelectorAll('#prio-list button');
+  for (var i = 0; i < b.length; i++) b[i].classList.toggle('on', b[i].dataset.p === k);
+}
+
+function previewPay(){
+  var v = parseFloat(document.getElementById('f-value').value) || 0;
+  var r = (parseFloat(document.getElementById('f-rate').value) || 0) / 100;
+  document.getElementById('f-pay').value = D.fmtMoney(v * r);
+}
+
+/* ── Submit ───────────────────────────────────────────────────────────── */
+function submitForm(){
+  var msg = document.getElementById('msg');
+  msg.className = 'msg';
+
+  var orgSel = document.getElementById('f-org').value;
+  var org = (orgSel === '__new')
+    ? document.getElementById('f-neworg').value.trim().toLowerCase()
+    : orgSel;
+
+  var f = {
+    org:     org,
+    contact: document.getElementById('f-contact').value.trim(),
+    email:   document.getElementById('f-email').value.trim(),
+    name:    document.getElementById('f-name').value.trim()
+  };
+
+  // Validate, and point at the field rather than just complaining
+  var bad = [];
+  function mark(id, ok){
+    var el = document.getElementById(id);
+    el.classList.toggle('bad', !ok);
+    if (!ok) bad.push(el);
+  }
+  mark('f-org',     !!f.org);
+  if (orgSel === '__new') mark('f-neworg', /^[a-z0-9.-]+\.[a-z]{2,}$/.test(f.org));
+  mark('f-contact', !!f.contact);
+  mark('f-email',   /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email));
+  mark('f-name',    !!f.name);
+
+  if (bad.length){
+    msg.className = 'msg err';
+    msg.innerHTML = '<b>A few things are missing</b>Fill in the highlighted fields and submit again. '
+      + 'Client, contact name, a valid email and a project name are the minimum — everything '
+      + 'else can follow.';
+    bad[0].focus();
+    bad[0].scrollIntoView({ behavior:'smooth', block:'center' });
+    return;
+  }
+
+  var scope = [];
+  var boxes = document.querySelectorAll('#scope-list input:checked');
+  for (var i = 0; i < boxes.length; i++) scope.push(boxes[i].value);
+
+  var doc = {
+    orgId:        f.org,
+    clientName:   (orgSel === '__new') ? f.org : D.tenantName(f.org),
+    contactName:  f.contact,
+    contactEmail: f.email,
+    contactPhone: document.getElementById('f-phone').value.trim(),
+    projectName:  f.name,
+    projectType:  document.getElementById('f-type').value,
+    address:      document.getElementById('f-addr').value.trim(),
+    capacityMw:   parseFloat(document.getElementById('f-mw').value) || '',
+    durationHrs:  parseFloat(document.getElementById('f-hrs').value) || '',
+    scope:        scope,
+    notes:        document.getElementById('f-notes').value.trim(),
+    priority:     PRIORITY,
+    dueDate:      document.getElementById('f-due').value || ''
+  };
+
+  var answeredNow = false;
+  if (MODE === 'staff'){
+    doc.value = parseFloat(document.getElementById('f-value').value) || 0;
+    doc.commissionRate = (parseFloat(document.getElementById('f-rate').value) || 0) / 100;
+    if (document.getElementById('f-assign').checked){
+      doc.assignedTo   = ME.email;
+      doc.assignedName = ME.name;
+      answeredNow = true;
+    }
+  }
+
+  var btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+
+  D.create(doc).then(function(ref){
+    /* Logged after the fact: stamp the response now so the dashboard doesn't
+       show a clock running on a conversation that already happened. */
+    if (answeredNow){
+      return D.patch(ref.id, {
+        firstResponseAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'acknowledged'
+      }, { type:'note', text:'Logged by ' + ME.name + ' after speaking to the client' })
+      .then(function(){ return ref; })['catch'](function(){ return ref; });
+    }
+    return ref;
+  }).then(function(ref){
+    done(doc, answeredNow, ref.id);
+  })['catch'](function(err){
+    console.error('[intake] submit failed', err);
+    btn.disabled = false; btn.textContent = 'Submit request';
+    var perm = err && (err.code === 'permission-denied' || /permission/i.test(err.message||''));
+    msg.className = 'msg err';
+    msg.innerHTML = perm
+      ? '<b>Firestore refused the write</b>The rules don\u2019t allow this account to create '
+        + '<code>intake_requests</code>. See the README (\u00A7 Firestore rules) — nothing was saved, '
+        + 'so your answers are still here and you can submit again once it\u2019s fixed.'
+      : '<b>Couldn\u2019t submit</b>' + D.esc(err.message || 'Unknown error.')
+        + ' Nothing was saved — try again.';
+  });
+}
+
+function done(doc, answered, id){
+  document.getElementById('wrap').style.display = 'none';
+  document.getElementById('wrap-done').style.display = 'block';
+  window.scrollTo(0,0);
+
+  var sla = (window.CLEARSKY_CONFIG.ops || {}).sla || {};
+  var hrs = sla[doc.priority] || 24;
+
+  if (MODE === 'client'){
+    document.getElementById('done-h').textContent = 'Thanks — we\u2019ve got it';
+    document.getElementById('done-p').textContent =
+      '"' + doc.projectName + '" is in the ClearSky delivery queue. We\u2019ll reply to '
+      + doc.contactEmail + ' and the work will appear in your portal as it\u2019s built.';
+    document.getElementById('done-sla').innerHTML =
+      'Someone replies within <b>' + hrs + ' hours</b>';
+    var p = document.getElementById('done-primary');
+    p.textContent = 'Done';
+    p.onclick = function(){ location.reload(); };
+  } else {
+    document.getElementById('done-h').textContent =
+      answered ? 'Logged and marked answered' : 'Request added to the queue';
+    document.getElementById('done-p').textContent =
+      '"' + doc.projectName + '" is in the queue for ' + doc.clientName + '.'
+      + (answered
+          ? ' It\u2019s assigned to you with the response already recorded, so no clock is running.'
+          : ' The response clock is running now.');
+    document.getElementById('done-sla').innerHTML = answered
+      ? 'Next step: <b>start the build</b> from the request'
+      : 'Response target: <b>' + hrs + ' hours</b>';
+  }
+}
+</script>
+</body>
+</html>

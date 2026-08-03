@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClearSky-OMEGA · Ops Console</title>
+<link rel="icon" href="/omega-logo.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   OMEGA OPS CONSOLE
+   Same token system as the tenant portal — staff move between this page, the
+   editor and projects.html constantly, and a second visual language would
+   just cost them a beat on every switch.
+
+   One deliberate departure: every duration, countdown and payout is set in
+   DM Mono. Response time is the product here. Typesetting it like an
+   instrument readout instead of body copy is the whole point of the page.
+   ═══════════════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --sap-blue:#0070F2; --sap-blue-hi:#1B90FF; --sap-ink:#1D2D3E; --sap-ink-2:#556B82;
+  --sap-page:#EDEFF1; --sap-card:#FFFFFF; --sap-card-border:#E4E8EC; --sap-num:#223548;
+  --cs-navy:#08384F; --cs-accent:#00A9A4; --cs-sub:#5A7180;
+  --ok:#16A34A; --warn:#D97706; --bad:#DC2626; --hold:#6B7280;
+  --shadow:0 1px 2px rgba(20,40,60,.05); --shadow-lg:0 8px 28px rgba(15,39,51,.14);
+  --r:10px;
+}
+html,body{height:100%}
+body{font-family:'DM Sans',sans-serif;background:var(--sap-page);color:var(--sap-ink);
+  -webkit-font-smoothing:antialiased}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--sap-blue)}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--sap-blue-hi);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ── Boot ─────────────────────────────────────────────────────────────── */
+#omega-boot{position:fixed;inset:0;background:var(--sap-page);z-index:9000;display:flex;
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;transition:opacity .3s}
+#omega-boot.hide{opacity:0;pointer-events:none}
+.spin{width:26px;height:26px;border:2.5px solid #D8DEE4;border-top-color:var(--sap-blue);
+  border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.boot-txt{font-size:12px;color:var(--sap-ink-2);letter-spacing:.4px}
+
+/* ── Auth ─────────────────────────────────────────────────────────────── */
+#auth-screen{min-height:100vh;display:none;align-items:center;justify-content:center;padding:24px;
+  background:linear-gradient(160deg,#08384F 0%,#0B2A3A 55%,#061A25 100%)}
+.auth-card{background:#fff;border-radius:16px;padding:34px 32px;width:100%;max-width:400px;
+  box-shadow:0 24px 60px rgba(0,0,0,.36)}
+.auth-logo{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+.auth-logo img{height:44px;width:auto;border-radius:9px}
+.auth-logo b{font-size:17px;font-weight:700;color:var(--cs-navy);letter-spacing:-.3px;display:block}
+.auth-logo b span{color:var(--sap-blue)}
+.auth-logo small{font-size:11px;color:var(--sap-ink-2);letter-spacing:.5px;text-transform:uppercase;font-weight:600}
+.auth-h{font-size:19px;font-weight:700;color:var(--cs-navy);letter-spacing:-.3px}
+.auth-sub{font-size:13px;color:var(--cs-sub);margin-top:5px;line-height:1.5}
+.fld{margin-top:14px}
+.fld label{display:block;font-size:11px;font-weight:600;color:var(--sap-ink-2);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px}
+.fld input,.fld select,.fld textarea{width:100%;border:1.5px solid #DDE3E9;border-radius:8px;
+  padding:10px 12px;font:400 14px 'DM Sans',sans-serif;color:var(--sap-ink);background:#fff;outline:none}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--sap-blue)}
+.btn{border:none;border-radius:8px;padding:11px 16px;font:600 13.5px 'DM Sans',sans-serif;
+  cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.btn-p{background:var(--sap-blue);color:#fff;width:100%;margin-top:16px}
+.btn-p:hover:not(:disabled){background:var(--sap-blue-hi)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-g{background:#fff;color:var(--sap-ink);border:1.5px solid #DDE3E9;width:100%;margin-top:10px;
+  display:flex;align-items:center;justify-content:center;gap:9px}
+.btn-g:hover{border-color:var(--sap-blue)}
+.auth-or{display:flex;align-items:center;gap:10px;margin:16px 0 4px;color:#98A6B3;font-size:11px}
+.auth-or::before,.auth-or::after{content:'';flex:1;height:1px;background:#E6EAEE}
+.auth-msg{display:none;margin-top:14px;padding:10px 12px;border-radius:8px;font-size:12.5px;line-height:1.5}
+#auth-err{background:#FDECEC;color:#8A1F1F}
+#auth-ok{background:#EAF6EC;color:#1B5E20}
+.auth-foot{margin-top:18px;font-size:11.5px;color:#94A3AF;text-align:center;line-height:1.6}
+
+/* ── Shell ────────────────────────────────────────────────────────────── */
+#app{display:none;min-height:100vh}
+#topbar{position:sticky;top:0;z-index:120;height:56px;background:#fff;display:flex;align-items:center;
+  gap:0;padding:0 18px;border-bottom:1px solid #E5E9ED;box-shadow:var(--shadow)}
+.tb-logo{display:flex;align-items:center;gap:9px;text-decoration:none}
+.tb-omega{height:28px;width:auto;border-radius:6px;display:block}
+.tb-logo-txt{color:var(--sap-ink);font-weight:700;font-size:15px;letter-spacing:-.2px}
+.tb-logo-txt span{color:var(--sap-blue)}
+.tb-sep{width:1px;height:22px;background:#E5E9ED;margin:0 14px}
+.tb-portal{color:var(--sap-ink-2);font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.tb-badge{margin-left:10px;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:#7A4E00;background:#FFF3DC;border:1px solid #F0DCB4;border-radius:5px;padding:3px 7px}
+.tb-spacer{flex:1}
+.tb-user{display:flex;align-items:center;gap:10px}
+.tb-avatar{width:30px;height:30px;border-radius:50%;background:var(--sap-blue);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11.5px;overflow:hidden}
+.tb-avatar img{width:100%;height:100%;object-fit:cover}
+.tb-name{font-size:13px;font-weight:500;color:var(--sap-ink)}
+.btn-sm{background:#fff;border:1px solid #DDE3E9;color:var(--sap-ink-2);border-radius:7px;
+  padding:6px 12px;cursor:pointer;font:500 12px 'DM Sans',sans-serif}
+.btn-sm:hover{border-color:var(--sap-blue);color:var(--sap-blue)}
+.btn-sm.pri{background:var(--sap-blue);border-color:var(--sap-blue);color:#fff}
+.btn-sm.pri:hover{background:var(--sap-blue-hi);color:#fff}
+
+#shell{display:flex;min-height:calc(100vh - 56px)}
+#side{width:216px;flex:0 0 216px;background:#fff;border-right:1px solid #E5E9ED;padding:16px 10px;
+  position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto}
+.sn-group{font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;
+  color:#9AA9B6;padding:12px 12px 6px}
+.sn-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
+  text-decoration:none;color:var(--sap-ink);font-size:13.5px;font-weight:500;cursor:pointer;
+  border:none;background:none;width:100%;text-align:left;transition:background .1s,color .1s}
+.sn-item svg{width:16px;height:16px;flex:none;opacity:.62}
+.sn-item:hover{background:#F2F5F8}
+.sn-item.active{background:#E8F1FE;color:var(--sap-blue);font-weight:600}
+.sn-item.active svg{opacity:1}
+.sn-count{margin-left:auto;font:500 11px 'DM Mono',monospace;color:var(--sap-ink-2);
+  background:#F0F3F6;border-radius:20px;padding:2px 7px;min-width:22px;text-align:center}
+.sn-item.active .sn-count{background:#fff;color:var(--sap-blue)}
+.sn-count.hot{background:#FDE7E7;color:var(--bad)}
+
+#main{flex:1;min-width:0;padding:26px 30px 60px}
+.view{display:none}
+.view.on{display:block}
+
+/* ── Page head ────────────────────────────────────────────────────────── */
+.ph{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:20px}
+.ph-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#8FA0AE}
+.ph h1{font-size:25px;font-weight:700;color:var(--cs-navy);letter-spacing:-.5px;margin-top:3px}
+.ph p{font-size:13.5px;color:var(--cs-sub);margin-top:5px;max-width:74ch;line-height:1.55}
+.ph-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── Cards / KPIs ─────────────────────────────────────────────────────── */
+.card{background:var(--sap-card);border:1px solid var(--sap-card-border);border-radius:var(--r);
+  box-shadow:var(--shadow)}
+.card-h{padding:14px 18px;border-bottom:1px solid var(--sap-card-border);display:flex;
+  align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-h h2{font-size:14.5px;font-weight:700;color:var(--cs-navy);letter-spacing:-.15px}
+.card-h .sub{font-size:11.5px;color:var(--sap-ink-2);margin-top:2px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:#fff;border:1px solid var(--sap-card-border);border-radius:var(--r);padding:14px 16px;
+  box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--k,#D6DDE4)}
+.kpi-l{font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#8FA0AE}
+.kpi-v{font:500 27px/1.1 'DM Mono',monospace;color:var(--sap-num);margin-top:8px;letter-spacing:-1px}
+.kpi-v.sm{font-size:21px}
+.kpi-s{font-size:11.5px;color:var(--sap-ink-2);margin-top:5px;line-height:1.4}
+.kpi.alert{--k:var(--bad)}
+.kpi.alert .kpi-v{color:var(--bad)}
+.kpi.good{--k:var(--ok)}
+.kpi.money{--k:var(--cs-accent)}
+.kpi.money .kpi-v{color:#0B7C78}
+
+/* ── Response desk: the signature element ─────────────────────────────
+   A live depleting bar per unanswered request. It keeps running past zero
+   into overtime rather than parking at 100%, because a 20-minute miss and a
+   2-day miss are not the same thing and should never look the same.      */
+.desk{display:flex;flex-direction:column}
+.desk-row{display:grid;grid-template-columns:1fr 190px 108px;gap:14px;align-items:center;
+  padding:13px 18px;border-bottom:1px solid #F0F3F6;cursor:pointer;transition:background .1s}
+.desk-row:last-child{border-bottom:none}
+.desk-row:hover{background:#F8FAFC}
+.desk-who{font-size:11.5px;font-weight:600;color:var(--sap-ink-2);letter-spacing:.2px}
+.desk-what{font-size:14px;font-weight:600;color:var(--cs-navy);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.desk-meta{font-size:11.5px;color:#8FA0AE;margin-top:3px}
+.desk-bar{height:6px;border-radius:4px;background:#EAEEF2;overflow:hidden;position:relative}
+.desk-fill{height:100%;border-radius:4px;transition:width 1s linear;background:var(--ok)}
+.desk-cap{display:flex;justify-content:space-between;font-size:10.5px;color:#8FA0AE;margin-top:5px;
+  letter-spacing:.3px}
+.desk-clock{font:500 17px/1 'DM Mono',monospace;text-align:right;letter-spacing:-.5px;color:var(--ok)}
+.desk-clock small{display:block;font:400 10px/1.3 'DM Sans',sans-serif;color:#8FA0AE;
+  margin-top:4px;letter-spacing:.3px;text-transform:uppercase}
+.s-warn .desk-fill{background:var(--warn)} .s-warn .desk-clock{color:var(--warn)}
+.s-breach .desk-fill{background:var(--bad)} .s-breach .desk-clock{color:var(--bad)}
+.s-breach .desk-bar{background:#FADCDC}
+.pulse{animation:pl 2s ease-in-out infinite}
+@keyframes pl{0%,100%{opacity:1}50%{opacity:.55}}
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  color:#8FA0AE;padding:11px 14px;border-bottom:1px solid var(--sap-card-border);white-space:nowrap;
+  background:#FAFBFC;position:sticky;top:0;z-index:2}
+.tbl td{padding:12px 14px;border-bottom:1px solid #F1F4F7;font-size:13px;vertical-align:middle}
+.tbl tbody tr{cursor:pointer;transition:background .1s}
+.tbl tbody tr:hover{background:#F8FAFC}
+.tbl tbody tr:last-child td{border-bottom:none}
+.t-name{font-weight:600;color:var(--cs-navy);font-size:13.5px}
+.t-sub{font-size:11.5px;color:#8FA0AE;margin-top:2px}
+.t-num{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px}
+.t-right{text-align:right}
+.scroll-x{overflow-x:auto}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.2px;
+  border-radius:20px;padding:3px 9px;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.pri{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  border-radius:4px;padding:2px 6px;white-space:nowrap}
+.chip{display:inline-block;font-size:11px;font-weight:500;color:var(--sap-ink-2);background:#F0F3F6;
+  border-radius:5px;padding:3px 7px;margin:0 4px 4px 0}
+.owner{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sap-ink)}
+.owner .av{width:20px;height:20px;border-radius:50%;background:#DCE6F0;color:#3E5C77;
+  display:flex;align-items:center;justify-content:center;font:700 9.5px 'DM Sans',sans-serif}
+.owner.none{color:#A6B3BF;font-style:italic}
+
+/* ── Filters ──────────────────────────────────────────────────────────── */
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.bar input[type=search],.bar select{border:1px solid #DDE3E9;border-radius:8px;padding:8px 11px;
+  font:400 13px 'DM Sans',sans-serif;background:#fff;color:var(--sap-ink);outline:none}
+.bar input[type=search]{flex:1;min-width:180px}
+.bar input:focus,.bar select:focus{border-color:var(--sap-blue)}
+.seg{display:flex;background:#E7ECF1;border-radius:8px;padding:2px}
+.seg button{border:none;background:none;padding:6px 12px;border-radius:6px;font:600 12px 'DM Sans',sans-serif;
+  color:var(--sap-ink-2);cursor:pointer}
+.seg button.on{background:#fff;color:var(--sap-blue);box-shadow:var(--shadow)}
+
+/* ── Board ────────────────────────────────────────────────────────────── */
+.board{display:grid;grid-template-columns:repeat(6,minmax(212px,1fr));gap:12px;align-items:start;
+  overflow-x:auto;padding-bottom:8px}
+.col{background:#E9EDF1;border-radius:var(--r);padding:10px;min-height:180px}
+.col.over{background:#DBE7F8;outline:2px dashed var(--sap-blue);outline-offset:-3px}
+.col-h{display:flex;align-items:center;gap:7px;padding:2px 4px 10px}
+.col-h b{font-size:12px;font-weight:700;color:var(--cs-navy);letter-spacing:-.1px}
+.col-h .n{margin-left:auto;font:500 11px 'DM Mono',monospace;color:var(--sap-ink-2)}
+.pcard{background:#fff;border:1px solid var(--sap-card-border);border-radius:8px;padding:11px;
+  margin-bottom:8px;cursor:grab;box-shadow:var(--shadow);transition:box-shadow .12s,transform .12s}
+.pcard:hover{box-shadow:0 3px 10px rgba(20,40,60,.12)}
+.pcard.drag{opacity:.4}
+.pcard-c{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8FA0AE}
+.pcard-n{font-size:13px;font-weight:600;color:var(--cs-navy);margin-top:3px;line-height:1.35}
+.pcard-f{display:flex;align-items:center;gap:6px;margin-top:9px;flex-wrap:wrap}
+.pcard-v{font:500 11.5px 'DM Mono',monospace;color:var(--sap-ink-2);margin-left:auto}
+.col-empty{font-size:11.5px;color:#98A6B3;text-align:center;padding:16px 8px;line-height:1.5}
+
+/* ── Drawer ───────────────────────────────────────────────────────────── */
+#scrim{position:fixed;inset:0;background:rgba(8,24,36,.42);z-index:300;display:none;opacity:0;
+  transition:opacity .2s}
+#scrim.on{display:block;opacity:1}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:#fff;z-index:310;
+  transform:translateX(100%);transition:transform .24s cubic-bezier(.4,0,.2,1);display:flex;
+  flex-direction:column;box-shadow:var(--shadow-lg)}
+#drawer.on{transform:none}
+.dr-h{padding:18px 22px;border-bottom:1px solid var(--sap-card-border);flex:none}
+.dr-close{position:absolute;top:14px;right:16px;background:#F0F3F6;border:none;width:30px;height:30px;
+  border-radius:8px;cursor:pointer;color:var(--sap-ink-2);font-size:16px;line-height:1}
+.dr-close:hover{background:#E3E9EE}
+.dr-b{flex:1;overflow-y:auto;padding:18px 22px 28px}
+.dr-f{flex:none;border-top:1px solid var(--sap-card-border);padding:12px 22px;display:flex;gap:8px;
+  flex-wrap:wrap;background:#FAFBFC}
+.sec{margin-top:20px}
+.sec-t{font-size:10.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#8FA0AE;
+  margin-bottom:9px}
+.kv{display:grid;grid-template-columns:118px 1fr;gap:7px 12px;font-size:13px}
+.kv dt{color:#8FA0AE;font-size:12px}
+.kv dd{color:var(--sap-ink)}
+.note{background:#F7F9FB;border:1px solid #E7ECF1;border-radius:8px;padding:11px 13px;font-size:13px;
+  line-height:1.6;color:var(--sap-ink);white-space:pre-wrap}
+.log{list-style:none}
+.log li{display:grid;grid-template-columns:8px 1fr;gap:11px;padding:0 0 14px;position:relative}
+.log li::before{content:'';width:8px;height:8px;border-radius:50%;background:#C8D3DD;margin-top:5px}
+.log li:not(:last-child)::after{content:'';position:absolute;left:3.5px;top:15px;bottom:0;width:1px;
+  background:#E3E9EE}
+.log b{font-size:12.5px;font-weight:600;color:var(--sap-ink);display:block}
+.log span{font-size:11.5px;color:#8FA0AE}
+.money-edit{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.payout-line{margin-top:10px;padding:10px 12px;background:#EDFAF8;border:1px solid #C9EDE9;
+  border-radius:8px;font-size:12.5px;color:#0B6B67;display:flex;justify-content:space-between;align-items:center}
+.payout-line b{font:500 15px 'DM Mono',monospace}
+
+/* ── Banners / empties ────────────────────────────────────────────────── */
+.banner{border-radius:var(--r);padding:13px 16px;font-size:13px;line-height:1.55;margin-bottom:16px;
+  display:flex;gap:12px;align-items:flex-start}
+.banner b{display:block;margin-bottom:2px}
+.banner.err{background:#FDECEC;color:#7F1D1D;border:1px solid #F3C9C9}
+.banner.info{background:#EAF2FB;color:#1B4A7A;border:1px solid #CBDDF0}
+.banner .x{margin-left:auto;background:none;border:none;cursor:pointer;color:inherit;opacity:.6;font-size:15px}
+.empty{padding:44px 20px;text-align:center;color:#8FA0AE}
+.empty h3{font-size:15px;color:var(--cs-navy);margin-bottom:6px}
+.empty p{font-size:13px;line-height:1.6;max-width:44ch;margin:0 auto 14px}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#0F2733;
+  color:#fff;font-size:13px;padding:11px 18px;border-radius:9px;z-index:400;opacity:0;
+  transition:opacity .2s,transform .2s;pointer-events:none;box-shadow:var(--shadow-lg)}
+.toast.on{opacity:1;transform:translateX(-50%)}
+
+@media(max-width:1080px){.board{grid-template-columns:repeat(6,232px)}}
+@media(max-width:860px){
+  #side{position:fixed;left:0;top:56px;bottom:0;z-index:130;transform:translateX(-100%);
+    transition:transform .2s;box-shadow:var(--shadow-lg)}
+  #side.on{transform:none}
+  #main{padding:18px 16px 50px}
+  .desk-row{grid-template-columns:1fr 96px}
+  .desk-row .desk-bar-wrap{display:none}
+  .menu-btn{display:flex!important}
+  .ph h1{font-size:21px}
+}
+.menu-btn{display:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:7px;
+  border:1px solid #DDE3E9;background:#fff;margin-right:10px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="omega-boot"><div class="spin"></div><div class="boot-txt">Loading ops console…</div></div>
+
+<!-- ══════════════════ SIGN IN ══════════════════ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <img src="/omega-logo.png" alt="ClearSky-OMEGA" onerror="this.style.display='none'">
+      <div>
+        <b>Clear<span>Sky</span> OMEGA</b>
+        <small>Ops Console</small>
+      </div>
+    </div>
+    <div class="auth-h">Staff sign-in</div>
+    <div class="auth-sub">The intake queue, delivery pipeline and commission ledger for
+      ClearSky project delivery.</div>
+
+    <div class="fld">
+      <label for="auth-email">Work email</label>
+      <input id="auth-email" type="email" autocomplete="username" placeholder="you@clearsky-usa.com">
+    </div>
+    <div class="fld">
+      <label for="auth-pass">Password</label>
+      <input id="auth-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-p" id="email-auth-btn" onclick="emailAuth()">Sign in</button>
+
+    <div class="auth-or">or</div>
+    <button class="btn btn-g" id="google-signin-btn" onclick="signInWithGoogle()">
+      <svg width="17" height="17" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+
+    <div class="auth-msg" id="auth-err"></div>
+    <div class="auth-msg" id="auth-ok"></div>
+    <div class="auth-foot">
+      Restricted to ClearSky staff accounts.<br>
+      Clients use their own tenant portal, not this console.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ APP ══════════════════ -->
+<div id="app">
+
+<div id="topbar">
+  <button class="menu-btn" onclick="document.getElementById('side').classList.toggle('on')" aria-label="Menu">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <a href="/" class="tb-logo">
+    <img src="/omega-logo.png" alt="ClearSky-OMEGA" class="tb-omega" onerror="this.style.display='none'">
+    <span class="tb-logo-txt">Clear<span>Sky</span> OMEGA</span>
+  </a>
+  <div class="tb-sep"></div>
+  <span class="tb-portal">Ops Console</span>
+  <span class="tb-badge" id="tb-badge">Internal</span>
+  <div class="tb-spacer"></div>
+  <div class="tb-user">
+    <button class="btn-sm pri" onclick="location.href='/intake.html'">+ Log a request</button>
+    <button class="btn-sm" onclick="refresh(true)" id="btn-refresh">Refresh</button>
+    <div class="tb-avatar" id="tb-avatar">–</div>
+    <span class="tb-name" id="tb-name"></span>
+    <button class="btn-sm" onclick="signOut()">Sign out</button>
+  </div>
+</div>
+
+<div id="shell">
+  <nav id="side">
+    <div class="sn-group">Delivery</div>
+    <button class="sn-item active" data-view="dashboard" onclick="go('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Dashboard</span></button>
+    <button class="sn-item" data-view="queue" onclick="go('queue')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>Intake queue</span><span class="sn-count" id="c-queue">0</span></button>
+    <button class="sn-item" data-view="board" onclick="go('board')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/></svg>
+      <span>Pipeline</span><span class="sn-count" id="c-board">0</span></button>
+
+    <div class="sn-group">Accounts</div>
+    <button class="sn-item" data-view="clients" onclick="go('clients')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+      <span>Clients</span><span class="sn-count" id="c-clients">0</span></button>
+    <button class="sn-item" data-view="earnings" onclick="go('earnings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span>Earnings</span></button>
+
+    <div class="sn-group">Tools</div>
+    <a class="sn-item" href="/intake.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>
+      <span>Project intake</span></a>
+    <a class="sn-item" href="/editor.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      <span>Site editor</span></a>
+    <a class="sn-item" href="/projects.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span>My projects</span></a>
+  </nav>
+
+  <main id="main">
+    <div id="banners"></div>
+
+    <!-- ── DASHBOARD ── -->
+    <section class="view on" id="v-dashboard">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow" id="dash-date">—</div>
+          <h1 id="dash-hi">Welcome back</h1>
+          <p>Everything clients have asked for, how fast we answered, and what's payable.
+             The response clock below is live — it counts down against the target for each
+             request's priority and keeps counting once it's blown.</p>
+        </div>
+        <div class="ph-actions">
+          <div class="seg">
+            <button class="on" id="sc-all" onclick="setScope('all')">Whole team</button>
+            <button id="sc-mine" onclick="setScope('mine')">Just mine</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-h">
+          <div>
+            <h2>Response desk</h2>
+            <div class="sub" id="desk-sub">Requests nobody has replied to yet</div>
+          </div>
+          <button class="btn-sm" onclick="go('queue')">Open the queue</button>
+        </div>
+        <div class="desk" id="desk"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+        <div class="card">
+          <div class="card-h"><div><h2>Response time by client</h2>
+            <div class="sub">First reply, averaged across answered requests</div></div></div>
+          <div class="scroll-x"><table class="tbl" id="tbl-resp"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div><h2>Recent activity</h2>
+            <div class="sub">Latest movement across the queue</div></div></div>
+          <div class="scroll-x"><table class="tbl" id="tbl-recent"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── QUEUE ── -->
+    <section class="view" id="v-queue">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow">Intake</div>
+          <h1>Intake queue</h1>
+          <p>Every request submitted through the project intake form, newest first.
+             Open one to reply, assign it, build it in the editor and deliver it back.</p>
+        </div>
+        <div class="ph-actions">
+          <button class="btn-sm pri" onclick="location.href='/intake.html'">+ Log a request</button>
+        </div>
+      </div>
+      <div class="bar">
+        <input type="search" id="q-search" placeholder="Search client, project, contact, address…" oninput="renderQueue()">
+        <select id="q-status" onchange="renderQueue()"></select>
+        <select id="q-priority" onchange="renderQueue()">
+          <option value="">Any priority</option>
+          <option value="critical">Critical</option>
+          <option value="rush">Rush</option>
+          <option value="standard">Standard</option>
+        </select>
+        <select id="q-client" onchange="renderQueue()"></select>
+        <div class="seg">
+          <button class="on" id="qa-all" onclick="setQueueOwner('all')">Everyone</button>
+          <button id="qa-mine" onclick="setQueueOwner('mine')">Mine</button>
+          <button id="qa-none" onclick="setQueueOwner('none')">Unassigned</button>
+        </div>
+      </div>
+      <div class="card scroll-x"><table class="tbl" id="tbl-queue"></table></div>
+    </section>
+
+    <!-- ── BOARD ── -->
+    <section class="view" id="v-board">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow">Delivery</div>
+          <h1>Pipeline</h1>
+          <p>Drag a card to move it. Moving into <b>In progress</b> links an editor project;
+             moving into <b>Completed</b> makes its commission payable.</p>
+        </div>
+        <div class="ph-actions">
+          <div class="seg">
+            <button class="on" id="ba-all" onclick="setBoardOwner('all')">Everyone</button>
+            <button id="ba-mine" onclick="setBoardOwner('mine')">Mine</button>
+          </div>
+        </div>
+      </div>
+      <div class="board" id="board"></div>
+    </section>
+
+    <!-- ── CLIENTS ── -->
+    <section class="view" id="v-clients">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow">Accounts</div>
+          <h1>Clients</h1>
+          <p>Each tenant on the platform, what they've asked for, how fast they get answered
+             and what they're worth. Click a row for their full request history.</p>
+        </div>
+      </div>
+      <div class="card scroll-x"><table class="tbl" id="tbl-clients"></table></div>
+      <div class="card" id="client-detail" style="margin-top:18px;display:none"></div>
+    </section>
+
+    <!-- ── EARNINGS ── -->
+    <section class="view" id="v-earnings">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow">Commission</div>
+          <h1>Earnings</h1>
+          <p>Commission is earned when a client signs off — not when a file is sent.
+             <b>Pending</b> means earned and not yet paid; payroll marks it paid.</p>
+        </div>
+        <div class="ph-actions">
+          <div class="seg">
+            <button class="on" id="ea-mine" onclick="setEarnScope('mine')">Mine</button>
+            <button id="ea-all" onclick="setEarnScope('all')">Whole team</button>
+          </div>
+        </div>
+      </div>
+      <div class="kpis" id="earn-kpis"></div>
+      <div class="card scroll-x" style="margin-bottom:18px">
+        <div class="card-h"><div><h2>Completed work</h2>
+          <div class="sub">Every signed-off request and what it pays</div></div></div>
+        <table class="tbl" id="tbl-earn"></table>
+      </div>
+      <div class="card scroll-x">
+        <div class="card-h"><div><h2>By person</h2>
+          <div class="sub">Team totals, highest earned first</div></div></div>
+        <table class="tbl" id="tbl-staff"></table>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+
+<div id="scrim" onclick="closeDrawer()"></div>
+<aside id="drawer" aria-label="Request detail">
+  <div class="dr-h" style="position:relative">
+    <button class="dr-close" onclick="closeDrawer()" aria-label="Close">×</button>
+    <div id="dr-head"></div>
+  </div>
+  <div class="dr-b" id="dr-body"></div>
+  <div class="dr-f" id="dr-foot"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="/config.js"></script>
+<script src="/omega-brand.js"></script>
+<script src="/ops-data.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   OMEGA OPS CONSOLE
+
+   Unlike a tenant portal, this page reads ACROSS orgs — that's its job. Auth
+   still gates who gets in (staff domains only, via OmegaBrand.resolve), but
+   the queue query is deliberately unscoped. Firestore rules have to permit
+   that; see README § "Firestore rules".
+   ══════════════════════════════════════════════════════════════════════════ */
+var D = OpsData;
+var WORKSPACES = {};
+var auth, db, ME = { email:'', name:'', uid:'' };
+var STATE = {
+  reqs: [], loaded:false, demo:false, view:'dashboard',
+  scope:'all', queueOwner:'all', boardOwner:'all', earnScope:'mine',
+  openId:null, clientOpen:null
+};
+
+/* ── Boot ─────────────────────────────────────────────────────────────── */
+window._omegaReady = function(){
+  var el = document.getElementById('omega-boot');
+  if (!el || el.classList.contains('hide')) return;
+  el.classList.add('hide');
+  setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+};
+
+(function boot(){
+  if (typeof firebase === 'undefined' || !window.CLEARSKY_CONFIG){ setTimeout(boot, 120); return; }
+  try { firebase.initializeApp(window.CLEARSKY_CONFIG.firebase); }
+  catch(e){ if(!/already exists/.test(e.message)) console.error('Firebase init:', e); }
+  auth = firebase.auth();
+  db   = firebase.firestore();
+
+  OmegaBrand.paintAuth(WORKSPACES);
+  document.title = 'ClearSky-OMEGA · Ops Console';
+
+  auth.onAuthStateChanged(function(user){
+    window._omegaReady();
+    if (!user) { showLogin(); return; }
+
+    var ws = OmegaBrand.resolve(user.email || '', WORKSPACES);
+    if (!ws) {
+      showAuthErr('This console is for ClearSky staff. ' +
+        OmegaBrand.accessMessage(user.email, WORKSPACES));
+      auth.signOut();
+      return;
+    }
+    ME.email = (user.email || '').toLowerCase();
+    ME.uid   = user.uid;
+    ME.name  = user.displayName || ME.email.split('@')[0];
+    D.init(db, ME);
+    showApp(user);
+  });
+})();
+
+function showLogin(){
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+function showAuthErr(m){
+  var el = document.getElementById('auth-err');
+  el.textContent = m; el.style.display = 'block';
+  var b = document.getElementById('email-auth-btn');
+  if (b){ b.disabled = false; b.textContent = 'Sign in'; }
+  var g = document.getElementById('google-signin-btn');
+  if (g) g.disabled = false;
+}
+function clearAuthMsg(){
+  ['auth-err','auth-ok'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+}
+
+function showApp(user){
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  document.getElementById('tb-name').textContent = ME.name;
+  var av = document.getElementById('tb-avatar');
+  if (user.photoURL) av.innerHTML = '<img src="'+user.photoURL+'" alt="" onerror="this.remove()">';
+  else av.textContent = (ME.name[0] || '?').toUpperCase();
+
+  document.getElementById('dash-hi').textContent = 'Welcome back, ' + ME.name.split(' ')[0];
+  document.getElementById('dash-date').textContent =
+    new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  buildFilters();
+  go(location.hash.replace('#/','') || 'dashboard', true);
+  refresh();
+  setInterval(tick, 1000);
+}
+
+/* ── Auth actions ─────────────────────────────────────────────────────── */
+function signInWithGoogle(){
+  clearAuthMsg();
+  var btn = document.getElementById('google-signin-btn');
+  btn.disabled = true;
+  var p = new firebase.auth.GoogleAuthProvider();
+  var params = { prompt:'select_account' };
+  var hint = OmegaBrand.googleHint(WORKSPACES);
+  if (hint) params.hd = hint;
+  p.setCustomParameters(params);
+  auth.signInWithPopup(p)['catch'](function(err){ showAuthErr(err.message); });
+}
+function emailAuth(){
+  clearAuthMsg();
+  var email = document.getElementById('auth-email').value.trim();
+  var pass  = document.getElementById('auth-pass').value;
+  if (!email || !pass){ showAuthErr('Enter your email and password.'); return; }
+  if (!OmegaBrand.resolve(email, WORKSPACES)){
+    showAuthErr('This console is for ClearSky staff accounts only.');
+    return;
+  }
+  var btn = document.getElementById('email-auth-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  auth.signInWithEmailAndPassword(email, pass)['catch'](function(err){
+    var c = (err && err.code) || '';
+    if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found')
+      showAuthErr('That email and password don\u2019t match an account.');
+    else if (c === 'auth/too-many-requests')
+      showAuthErr('Too many attempts. Wait a few minutes and try again.');
+    else showAuthErr((err && err.message) || 'Sign-in failed.');
+  });
+}
+function signOut(){ auth.signOut(); }
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Enter' && document.getElementById('auth-screen').style.display === 'flex') emailAuth();
+  if (e.key === 'Escape') closeDrawer();
+});
+
+/* ── Data ─────────────────────────────────────────────────────────────── */
+function refresh(manual){
+  var btn = document.getElementById('btn-refresh');
+  if (btn){ btn.disabled = true; btn.textContent = 'Loading…'; }
+  return D.loadRequests().then(function(rows){
+    STATE.reqs = rows; STATE.loaded = true; STATE.demo = false;
+    clearBanner('load-error');
+    if (!rows.length) showEmptyQueueBanner();
+    renderAll();
+    if (manual) toast('Queue refreshed');
+  })['catch'](function(err){
+    console.error('[ops] load failed', err);
+    STATE.loaded = true;
+    showLoadError(err);
+    renderAll();
+  })['finally'](function(){
+    if (btn){ btn.disabled = false; btn.textContent = 'Refresh'; }
+  });
+}
+
+function showLoadError(err){
+  var perm = err && (err.code === 'permission-denied' || /permission/i.test(err.message||''));
+  banner('load-error','err',
+    perm ? 'Firestore refused the query' : 'Couldn\u2019t load the queue',
+    perm
+      ? 'This console reads <code>intake_requests</code> across every tenant, which the standard '
+        + 'per-org rules block. Add the staff read rule from the README (\u00A7 Firestore rules), '
+        + 'then refresh. Until then you can work through the layout with sample data.'
+      : D.esc(err && err.message || 'Unknown error.'),
+    perm ? { label:'Load sample data', fn:'loadSample()' } : { label:'Try again', fn:'refresh(true)' });
+}
+
+function showEmptyQueueBanner(){
+  banner('empty','info','No requests yet',
+    'Nothing has been submitted through the intake form. Log the first one yourself, or '
+    + 'load sample data to see how the console behaves with a full queue.',
+    { label:'Load sample data', fn:'loadSample()' });
+}
+
+function loadSample(){
+  STATE.reqs = D.sample(); STATE.demo = true; STATE.loaded = true;
+  clearBanner('load-error'); clearBanner('empty');
+  banner('demo','info','Showing sample data',
+    'Nothing here is real and nothing is saved. Use Refresh to go back to live data.',
+    { label:'Back to live data', fn:'refresh(true)' });
+  renderAll();
+}
+
+/* ── Banners ──────────────────────────────────────────────────────────── */
+function banner(id, kind, title, body, action){
+  clearBanner(id);
+  var wrap = document.getElementById('banners');
+  var el = document.createElement('div');
+  el.className = 'banner ' + kind;
+  el.dataset.bid = id;
+  el.innerHTML = '<div style="flex:1"><b>'+D.esc(title)+'</b>'+body
+    + (action ? ' <a href="#" onclick="'+action.fn+';return false" style="font-weight:600">'
+        + D.esc(action.label) + '</a>' : '')
+    + '</div><button class="x" onclick="clearBanner(\''+id+'\')" aria-label="Dismiss">×</button>';
+  wrap.appendChild(el);
+}
+function clearBanner(id){
+  var el = document.querySelector('[data-bid="'+id+'"]');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+function toast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('on'); }, 2600);
+}
+
+/* ── Routing ──────────────────────────────────────────────────────────── */
+function go(view, silent){
+  if (!document.getElementById('v-' + view)) view = 'dashboard';
+  STATE.view = view;
+  var i, s = document.querySelectorAll('.view');
+  for (i = 0; i < s.length; i++) s[i].classList.remove('on');
+  document.getElementById('v-' + view).classList.add('on');
+  var n = document.querySelectorAll('.sn-item[data-view]');
+  for (i = 0; i < n.length; i++) n[i].classList.toggle('active', n[i].dataset.view === view);
+  if (!silent) location.hash = '#/' + view;
+  document.getElementById('side').classList.remove('on');
+  window.scrollTo(0, 0);
+  renderView();
+}
+window.addEventListener('hashchange', function(){
+  var v = location.hash.replace('#/','');
+  if (v && v !== STATE.view) go(v, true);
+});
+
+/* ── Filter controls ──────────────────────────────────────────────────── */
+function buildFilters(){
+  var st = document.getElementById('q-status');
+  st.innerHTML = '<option value="open">Open (not completed)</option><option value="">Any status</option>'
+    + D.STATUS.map(function(s){ return '<option value="'+s.key+'">'+s.label+'</option>'; }).join('');
+  st.value = 'open';
+}
+function buildClientFilter(){
+  var sel = document.getElementById('q-client'), cur = sel.value;
+  var seen = {}, opts = [];
+  (STATE.reqs || []).forEach(function(r){
+    if (r.orgId && !seen[r.orgId]){ seen[r.orgId] = 1; opts.push(r.orgId); }
+  });
+  opts.sort();
+  sel.innerHTML = '<option value="">All clients</option>'
+    + opts.map(function(o){
+        return '<option value="'+D.esc(o)+'">'+D.esc(D.tenantName(o, STATE.reqs))+'</option>';
+      }).join('');
+  if (cur) sel.value = cur;
+}
+function setScope(s){
+  STATE.scope = s;
+  document.getElementById('sc-all').classList.toggle('on', s==='all');
+  document.getElementById('sc-mine').classList.toggle('on', s==='mine');
+  renderDashboard();
+}
+function setQueueOwner(s){
+  STATE.queueOwner = s;
+  ['all','mine','none'].forEach(function(k){
+    document.getElementById('qa-'+k).classList.toggle('on', k===s);
+  });
+  renderQueue();
+}
+function setBoardOwner(s){
+  STATE.boardOwner = s;
+  document.getElementById('ba-all').classList.toggle('on', s==='all');
+  document.getElementById('ba-mine').classList.toggle('on', s==='mine');
+  renderBoard();
+}
+function setEarnScope(s){
+  STATE.earnScope = s;
+  document.getElementById('ea-mine').classList.toggle('on', s==='mine');
+  document.getElementById('ea-all').classList.toggle('on', s==='all');
+  renderEarnings();
+}
+
+/* ── Render ───────────────────────────────────────────────────────────── */
+function renderAll(){ buildClientFilter(); renderCounts(); renderView(); }
+function renderView(){
+  if (STATE.view === 'dashboard') renderDashboard();
+  else if (STATE.view === 'queue') renderQueue();
+  else if (STATE.view === 'board') renderBoard();
+  else if (STATE.view === 'clients') renderClients();
+  else if (STATE.view === 'earnings') renderEarnings();
+}
+
+function renderCounts(){
+  var open = STATE.reqs.filter(function(r){
+    return r.status !== 'completed' && r.status !== 'cancelled';
+  });
+  var unanswered = STATE.reqs.filter(function(r){ return !D.answered(r); });
+  var q = document.getElementById('c-queue');
+  q.textContent = open.length;
+  q.classList.toggle('hot', unanswered.length > 0);
+  document.getElementById('c-board').textContent = open.length;
+  document.getElementById('c-clients').textContent = D.byTenant(STATE.reqs).length;
+}
+
+/* ── Dashboard ────────────────────────────────────────────────────────── */
+function scoped(){
+  if (STATE.scope === 'mine') return STATE.reqs.filter(function(r){ return r.assignedTo === ME.email; });
+  return STATE.reqs;
+}
+
+function renderDashboard(){
+  var reqs = scoped();
+  var s = D.summarize(reqs);
+
+  function kpi(cls, label, value, sub){
+    return '<div class="kpi '+cls+'"><div class="kpi-l">'+label+'</div>'
+      + '<div class="kpi-v'+(String(value).length>7?' sm':'')+'">'+value+'</div>'
+      + '<div class="kpi-s">'+sub+'</div></div>';
+  }
+
+  var slaTxt = (s.slaHitRate == null) ? 'no answered requests yet'
+    : Math.round(s.slaHitRate*100) + '% answered inside target';
+
+  document.getElementById('kpis').innerHTML =
+      kpi(s.awaitingResponse ? 'alert' : 'good', 'Awaiting first reply', s.awaitingResponse,
+          s.breached ? '<b style="color:var(--bad)">'+s.breached+' past target</b>'
+                     : 'all inside target')
+    + kpi('', 'Median first reply', s.respAvg7d != null ? D.fmtDur(s.respAvg7d) : '—',
+          s.respAvg7d != null ? 'last 7 days · ' + slaTxt : 'no data in the last 7 days')
+    + kpi('', 'In progress', s.working + s.review,
+          s.review + ' in review · ' + s.working + ' being built')
+    + kpi('', 'Awaiting sign-off', s.delivered,
+          s.delivered ? 'delivered, not signed off' : 'nothing sitting with clients')
+    + kpi('good', 'Completed this month', s.completedThisMonth,
+          s.completed + ' completed all time')
+    + kpi('money', 'Earned this month', D.fmtMoney(s.earnedThisMonth, {compact:true}),
+          D.fmtMoney(s.earnedPending, {compact:true}) + ' pending payout');
+
+  renderDesk(reqs);
+
+  // Response time by client
+  var tenants = D.byTenant(reqs).filter(function(t){ return t.requests.length; });
+  tenants.sort(function(a,b){
+    var x = a.stats.respAvg == null ? Infinity : a.stats.respAvg;
+    var y = b.stats.respAvg == null ? Infinity : b.stats.respAvg;
+    return x - y;
+  });
+  document.getElementById('tbl-resp').innerHTML = tenants.length
+    ? '<thead><tr><th>Client</th><th>Requests</th><th>Avg first reply</th><th class="t-right">Open</th></tr></thead><tbody>'
+      + tenants.map(function(t){
+          var v = t.stats.respAvg;
+          var col = v == null ? '#8FA0AE' : (v <= 4*3600000 ? 'var(--ok)' : v <= 24*3600000 ? 'var(--warn)' : 'var(--bad)');
+          return '<tr onclick="openClient(\''+D.esc(t.orgId)+'\')">'
+            + '<td><div class="t-name">'+D.esc(t.name)+'</div><div class="t-sub">'+D.esc(t.orgId)+'</div></td>'
+            + '<td class="t-num">'+t.requests.length+'</td>'
+            + '<td class="t-num" style="color:'+col+'">'+(v==null?'—':D.fmtDur(v))+'</td>'
+            + '<td class="t-num t-right">'+t.stats.open+'</td></tr>';
+        }).join('') + '</tbody>'
+    : emptyRow(4, 'No client requests yet.');
+
+  // Recent activity
+  var recent = reqs.slice().sort(function(a,b){
+    return lastTouch(b) - lastTouch(a);
+  }).slice(0, 8);
+  document.getElementById('tbl-recent').innerHTML = recent.length
+    ? '<thead><tr><th>Request</th><th>Status</th><th class="t-right">When</th></tr></thead><tbody>'
+      + recent.map(function(r){
+          return '<tr onclick="openRequest(\''+r.id+'\')">'
+            + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
+            + '<div class="t-sub">'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</div></td>'
+            + '<td>'+statusPill(r.status)+'</td>'
+            + '<td class="t-num t-right">'+D.fmtAgo(lastTouch(r))+'</td></tr>';
+        }).join('') + '</tbody>'
+    : emptyRow(3, 'Nothing has moved yet.');
+}
+
+function lastTouch(r){
+  return Math.max(D.ms(r.submittedAt), D.ms(r.firstResponseAt), D.ms(r.startedAt),
+                  D.ms(r.deliveredAt), D.ms(r.completedAt));
+}
+
+/* The response desk. Anything unanswered, worst first. */
+function renderDesk(reqs){
+  var open = reqs.filter(function(r){
+    return !D.answered(r) && r.status !== 'cancelled';
+  });
+  open.sort(function(a,b){ return D.clock(b).frac - D.clock(a).frac; });
+
+  var sub = document.getElementById('desk-sub');
+  var el = document.getElementById('desk');
+
+  if (!open.length){
+    sub.textContent = 'Nothing waiting on a first reply';
+    el.innerHTML = '<div class="empty"><h3>Desk is clear</h3>'
+      + '<p>Every request has had a human reply. New submissions land here the moment '
+      + 'they arrive.</p></div>';
+    return;
+  }
+  sub.textContent = open.length + ' waiting on a first reply · '
+    + 'target ' + slaSummary();
+
+  el.innerHTML = open.map(function(r){
+    var c = D.clock(r);
+    return '<div class="desk-row s-'+c.state+'" data-tick="'+r.id+'" onclick="openRequest(\''+r.id+'\')">'
+      + '<div style="min-width:0">'
+        + '<div class="desk-who">'+D.esc(D.tenantName(r.orgId, STATE.reqs))
+          + ' · ' + priBadge(r.priority) + '</div>'
+        + '<div class="desk-what">'+D.esc(r.projectName)+'</div>'
+        + '<div class="desk-meta">submitted '+D.fmtAgo(r.submittedAt)
+          + (r.contactName ? ' by ' + D.esc(r.contactName) : '') + '</div>'
+      + '</div>'
+      + '<div class="desk-bar-wrap">'
+        + '<div class="desk-bar"><div class="desk-fill" style="width:'+c.pct+'%"></div></div>'
+        + '<div class="desk-cap"><span>'+D.fmtDur(c.elapsed)+' elapsed</span>'
+          + '<span>'+D.fmtDur(c.target)+' target</span></div>'
+      + '</div>'
+      + '<div class="desk-clock'+(c.state==='breach'?' pulse':'')+'">'
+        + clockText(c) + '<small>'+(c.state==='breach'?'over target':'left to reply')+'</small></div>'
+      + '</div>';
+  }).join('');
+}
+
+function clockText(c){
+  return (c.remaining >= 0) ? D.fmtDur(c.remaining) : '+' + D.fmtDur(-c.remaining);
+}
+
+function slaSummary(){
+  var s = (window.CLEARSKY_CONFIG.ops || {}).sla || {};
+  return s.critical + 'h critical · ' + s.rush + 'h rush · ' + s.standard + 'h standard';
+}
+
+/* Per-second update of just the live clocks. Re-rendering the whole desk
+   every second would fight with hover and scroll, so this touches only the
+   numbers, the bar width and the state class. */
+function tick(){
+  var rows = document.querySelectorAll('[data-tick]');
+  if (!rows.length) return;
+  for (var i = 0; i < rows.length; i++){
+    var row = rows[i];
+    var r = byId(row.dataset.tick);
+    if (!r) continue;
+    var c = D.clock(r);
+    if (c.settled) continue;
+    row.className = row.className.replace(/s-(ok|warn|breach)/, 's-' + c.state);
+    var fill = row.querySelector('.desk-fill'); if (fill) fill.style.width = c.pct + '%';
+    var cap  = row.querySelector('.desk-cap span'); if (cap) cap.textContent = D.fmtDur(c.elapsed) + ' elapsed';
+    var clk  = row.querySelector('.desk-clock');
+    if (clk){
+      clk.classList.toggle('pulse', c.state === 'breach');
+      clk.firstChild.nodeValue = clockText(c);
+      var sm = clk.querySelector('small');
+      if (sm) sm.textContent = (c.state === 'breach') ? 'over target' : 'left to reply';
+    }
+    var mini = row.querySelector('[data-miniclock]');
+    if (mini){
+      mini.textContent = clockText(c);
+      mini.style.color = c.state === 'breach' ? 'var(--bad)'
+                       : c.state === 'warn'   ? 'var(--warn)' : 'var(--ok)';
+    }
+  }
+}
+
+function byId(id){
+  for (var i = 0; i < STATE.reqs.length; i++) if (STATE.reqs[i].id === id) return STATE.reqs[i];
+  return null;
+}
+
+/* ── Shared cell renderers ────────────────────────────────────────────── */
+function statusPill(key){
+  var s = D.statusOf(key);
+  return '<span class="pill" style="background:'+hexA(s.color,.10)+';color:'+s.color+'">'
+    + '<span class="dot" style="background:'+s.color+'"></span>'+s.label+'</span>';
+}
+function priBadge(key){
+  var p = D.priorityOf(key);
+  return '<span class="pri" style="background:'+hexA(p.color,.12)+';color:'+p.color+'">'+p.label+'</span>';
+}
+function hexA(hex, a){
+  var h = hex.replace('#','');
+  var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+function ownerCell(r){
+  if (!r.assignedTo) return '<span class="owner none">Unassigned</span>';
+  var nm = r.assignedName || r.assignedTo.split('@')[0];
+  var me = r.assignedTo === ME.email;
+  return '<span class="owner"><span class="av">'+D.esc((nm[0]||'?').toUpperCase())+'</span>'
+    + D.esc(nm) + (me ? ' <span style="color:#8FA0AE">(you)</span>' : '') + '</span>';
+}
+function respCell(r){
+  var c = D.clock(r);
+  if (c.settled){
+    var ok = c.frac <= 1;
+    return '<span class="t-num" style="color:'+(ok?'var(--ok)':'var(--bad)')+'" title="'
+      + (ok ? 'Inside target' : 'Missed the '+D.fmtDur(c.target)+' target') + '">'
+      + D.fmtDur(c.elapsed) + '</span>';
+  }
+  return '<span class="t-num" data-miniclock="1" style="color:'
+    + (c.state==='breach'?'var(--bad)':c.state==='warn'?'var(--warn)':'var(--ok)') + '">'
+    + clockText(c) + '</span>';
+}
+function emptyRow(cols, msg){
+  return '<tbody><tr><td colspan="'+cols+'" style="text-align:center;padding:34px;color:#8FA0AE">'
+    + D.esc(msg) + '</td></tr></tbody>';
+}
+
+/* ── Queue ────────────────────────────────────────────────────────────── */
+function queueRows(){
+  var q  = (document.getElementById('q-search').value || '').toLowerCase();
+  var st = document.getElementById('q-status').value;
+  var pr = document.getElementById('q-priority').value;
+  var cl = document.getElementById('q-client').value;
+
+  return STATE.reqs.filter(function(r){
+    if (st === 'open'){ if (r.status === 'completed' || r.status === 'cancelled') return false; }
+    else if (st && r.status !== st) return false;
+    if (pr && r.priority !== pr) return false;
+    if (cl && r.orgId !== cl) return false;
+    if (STATE.queueOwner === 'mine' && r.assignedTo !== ME.email) return false;
+    if (STATE.queueOwner === 'none' && r.assignedTo) return false;
+    if (q){
+      var hay = [r.projectName, r.clientName, r.orgId, r.contactName, r.contactEmail,
+                 r.address, r.assignedName].join(' ').toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+}
+
+function renderQueue(){
+  var rows = queueRows();
+  var t = document.getElementById('tbl-queue');
+  if (!rows.length){
+    t.innerHTML = '<thead><tr><th>Request</th></tr></thead>'
+      + emptyRow(1, STATE.reqs.length ? 'No requests match those filters.' : 'The queue is empty.');
+    return;
+  }
+  t.innerHTML =
+    '<thead><tr><th>Request</th><th>Client</th><th>Priority</th><th>Submitted</th>'
+    + '<th>First reply</th><th>Status</th><th>Owner</th><th class="t-right">Value</th></tr></thead><tbody>'
+    + rows.map(function(r){
+        return '<tr data-tick="'+r.id+'" onclick="openRequest(\''+r.id+'\')">'
+          + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
+            + '<div class="t-sub">'+D.esc(D.labelFor(D.TYPES, r.projectType))
+            + (r.address ? ' · ' + D.esc(r.address) : '') + '</div></td>'
+          + '<td>'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</td>'
+          + '<td>'+priBadge(r.priority)+'</td>'
+          + '<td class="t-num">'+D.fmtAgo(r.submittedAt)+'</td>'
+          + '<td>'+respCell(r)+'</td>'
+          + '<td>'+statusPill(r.status)+'</td>'
+          + '<td>'+ownerCell(r)+'</td>'
+          + '<td class="t-num t-right">'+(r.value ? D.fmtMoney(r.value,{compact:true}) : '—')+'</td>'
+          + '</tr>';
+      }).join('') + '</tbody>';
+}
+
+/* ── Board ────────────────────────────────────────────────────────────── */
+function renderBoard(){
+  var cols = D.STATUS.filter(function(s){ return s.pipeline; });
+  var reqs = STATE.reqs.filter(function(r){
+    if (r.status === 'cancelled') return false;
+    if (STATE.boardOwner === 'mine' && r.assignedTo !== ME.email) return false;
+    return true;
+  });
+
+  document.getElementById('board').innerHTML = cols.map(function(col){
+    var inCol = reqs.filter(function(r){ return r.status === col.key; });
+    // on_hold has no column of its own; park those cards with their last step
+    if (col.key === 'acknowledged'){
+      inCol = inCol.concat(reqs.filter(function(r){ return r.status === 'on_hold'; }));
+    }
+    return '<div class="col" data-col="'+col.key+'" ondragover="colOver(event)" '
+      + 'ondragleave="colLeave(event)" ondrop="colDrop(event)">'
+      + '<div class="col-h"><span class="dot" style="background:'+col.color+'"></span>'
+        + '<b>'+col.label+'</b><span class="n">'+inCol.length+'</span></div>'
+      + (inCol.length ? inCol.map(pcard).join('')
+          : '<div class="col-empty">'+D.esc(col.hint)+'</div>')
+      + '</div>';
+  }).join('');
+}
+
+function pcard(r){
+  var due = D.dueMs(r), late = due && Date.now() > due && r.status !== 'completed';
+  return '<div class="pcard" draggable="true" data-id="'+r.id+'" '
+    + 'ondragstart="cardDrag(event)" ondragend="cardDrop(event)" onclick="openRequest(\''+r.id+'\')">'
+    + '<div class="pcard-c">'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</div>'
+    + '<div class="pcard-n">'+D.esc(r.projectName)+'</div>'
+    + '<div class="pcard-f">'+priBadge(r.priority)
+      + (r.status === 'on_hold' ? '<span class="pri" style="background:#EEF1F4;color:#6B7280">On hold</span>' : '')
+      + (late ? '<span class="pri" style="background:#FDE7E7;color:var(--bad)">Late</span>' : '')
+      + '<span class="pcard-v">'+(r.value ? D.fmtMoney(r.value,{compact:true}) : '—')+'</span></div>'
+    + '</div>';
+}
+
+var _dragId = null;
+function cardDrag(e){
+  _dragId = e.currentTarget.dataset.id;
+  e.currentTarget.classList.add('drag');
+  try { e.dataTransfer.setData('text/plain', _dragId); e.dataTransfer.effectAllowed = 'move'; } catch(x){}
+}
+function cardDrop(e){ e.currentTarget.classList.remove('drag'); }
+function colOver(e){ e.preventDefault(); e.currentTarget.classList.add('over'); }
+function colLeave(e){ e.currentTarget.classList.remove('over'); }
+function colDrop(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('over');
+  var to = e.currentTarget.dataset.col;
+  var id = _dragId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+  _dragId = null;
+  if (!id || !to) return;
+  var r = byId(id);
+  if (!r || r.status === to) return;
+  setStatus(id, to);
+}
+
+/* ── Clients ──────────────────────────────────────────────────────────── */
+function renderClients(){
+  var tenants = D.byTenant(STATE.reqs);
+  var t = document.getElementById('tbl-clients');
+  if (!tenants.length){ t.innerHTML = emptyRow(1, 'No clients yet.'); return; }
+
+  t.innerHTML = '<thead><tr><th>Client</th><th>Requests</th><th>Open</th><th>Avg first reply</th>'
+    + '<th>Completed</th><th class="t-right">Completed value</th><th class="t-right">Last activity</th></tr></thead><tbody>'
+    + tenants.map(function(c){
+        var s = c.stats;
+        return '<tr onclick="openClient(\''+D.esc(c.orgId)+'\')">'
+          + '<td><div class="t-name">'+D.esc(c.name)+'</div><div class="t-sub">'+D.esc(c.orgId)+'</div></td>'
+          + '<td class="t-num">'+c.requests.length+'</td>'
+          + '<td class="t-num">'+s.open+'</td>'
+          + '<td class="t-num">'+(s.respAvg==null?'—':D.fmtDur(s.respAvg))+'</td>'
+          + '<td class="t-num">'+s.completed+'</td>'
+          + '<td class="t-num t-right">'+D.fmtMoney(s.valueCompleted,{compact:true})+'</td>'
+          + '<td class="t-num t-right">'+(c.lastActivity?D.fmtAgo(c.lastActivity):'—')+'</td></tr>';
+      }).join('') + '</tbody>';
+
+  if (STATE.clientOpen) openClient(STATE.clientOpen, true);
+}
+
+function openClient(orgId, keep){
+  STATE.clientOpen = orgId;
+  if (STATE.view !== 'clients') go('clients');
+  var rows = STATE.reqs.filter(function(r){ return r.orgId === orgId; });
+  var name = D.tenantName(orgId, STATE.reqs);
+  var s = D.summarize(rows);
+  var box = document.getElementById('client-detail');
+  box.style.display = 'block';
+  box.innerHTML =
+    '<div class="card-h"><div><h2>'+D.esc(name)+'</h2>'
+      + '<div class="sub">'+D.esc(orgId)+' · '+rows.length+' request(s) · '
+      + D.fmtMoney(s.valueCompleted + s.valueOpen, {compact:true}) + ' lifetime value</div></div>'
+      + '<button class="btn-sm" onclick="closeClient()">Close</button></div>'
+    + (rows.length
+      ? '<div class="scroll-x"><table class="tbl"><thead><tr><th>Request</th><th>Submitted</th>'
+        + '<th>First reply</th><th>Status</th><th>Owner</th><th class="t-right">Value</th></tr></thead><tbody>'
+        + rows.map(function(r){
+            return '<tr onclick="openRequest(\''+r.id+'\')">'
+              + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
+              + '<div class="t-sub">'+D.esc(D.labelFor(D.TYPES, r.projectType))+'</div></td>'
+              + '<td class="t-num">'+D.fmtDate(r.submittedAt)+'</td>'
+              + '<td>'+respCell(r)+'</td>'
+              + '<td>'+statusPill(r.status)+'</td>'
+              + '<td>'+ownerCell(r)+'</td>'
+              + '<td class="t-num t-right">'+(r.value?D.fmtMoney(r.value,{compact:true}):'—')+'</td></tr>';
+          }).join('') + '</tbody></table></div>'
+      : '<div class="empty"><h3>Nothing submitted yet</h3><p>'+D.esc(name)
+        + ' is set up on the platform but hasn\u2019t sent a request through the intake form.</p>'
+        + '<button class="btn-sm pri" onclick="location.href=\'/intake.html?client='
+        + encodeURIComponent(orgId)+'\'">Log one for them</button></div>');
+  if (!keep) box.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function closeClient(){
+  STATE.clientOpen = null;
+  document.getElementById('client-detail').style.display = 'none';
+}
+
+/* ── Earnings ─────────────────────────────────────────────────────────── */
+function renderEarnings(){
+  var mine = STATE.earnScope === 'mine';
+  var rows = STATE.reqs.filter(function(r){
+    return !mine || r.assignedTo === ME.email;
+  });
+  var s = D.summarize(rows);
+
+  function kpi(cls,label,value,sub){
+    return '<div class="kpi '+cls+'"><div class="kpi-l">'+label+'</div>'
+      + '<div class="kpi-v'+(String(value).length>7?' sm':'')+'">'+value+'</div>'
+      + '<div class="kpi-s">'+sub+'</div></div>';
+  }
+  document.getElementById('earn-kpis').innerHTML =
+      kpi('money','Earned this month', D.fmtMoney(s.earnedThisMonth,{compact:true}),
+          s.completedThisMonth + ' project(s) signed off')
+    + kpi('money','Pending payout', D.fmtMoney(s.earnedPending,{compact:true}),
+          'earned, not yet marked paid')
+    + kpi('good','Paid to date', D.fmtMoney(s.earnedPaid,{compact:true}), 'all time')
+    + kpi('','Completed value', D.fmtMoney(s.valueCompleted,{compact:true}),
+          s.completed + ' completed project(s)')
+    + kpi('','In flight', D.fmtMoney(s.valueOpen,{compact:true}),
+          s.open + ' open request(s), not yet earned');
+
+  var done = rows.filter(function(r){ return D.isEarned(r); })
+                 .sort(function(a,b){ return D.ms(b.completedAt) - D.ms(a.completedAt); });
+
+  document.getElementById('tbl-earn').innerHTML = done.length
+    ? '<thead><tr><th>Project</th><th>Client</th><th>Completed</th><th>Cycle time</th>'
+      + '<th class="t-right">Value</th><th class="t-right">Rate</th>'
+      + '<th class="t-right">Commission</th><th>Payout</th></tr></thead><tbody>'
+      + done.map(function(r){
+          var cyc = D.cycleMs(r);
+          return '<tr onclick="openRequest(\''+r.id+'\')">'
+            + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
+              + (mine?'':'<div class="t-sub">'+D.esc(r.assignedName||r.assignedTo||'—')+'</div>')+'</td>'
+            + '<td>'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</td>'
+            + '<td class="t-num">'+D.fmtDate(r.completedAt)+'</td>'
+            + '<td class="t-num">'+(cyc==null?'—':D.fmtDur(cyc))+'</td>'
+            + '<td class="t-num t-right">'+D.fmtMoney(r.value)+'</td>'
+            + '<td class="t-num t-right">'+(D.rate(r)*100).toFixed(1)+'%</td>'
+            + '<td class="t-num t-right" style="font-weight:500;color:#0B7C78">'+D.fmtMoney(D.payout(r))+'</td>'
+            + '<td>'+(D.isPaid(r)
+                ? '<span class="pill" style="background:rgba(22,163,74,.10);color:var(--ok)">'
+                  + '<span class="dot" style="background:var(--ok)"></span>Paid '+D.fmtDate(r.paidAt)+'</span>'
+                : '<span class="pill" style="background:rgba(217,119,6,.10);color:var(--warn)">'
+                  + '<span class="dot" style="background:var(--warn)"></span>Pending</span>')+'</td></tr>';
+        }).join('') + '</tbody>'
+    : emptyRow(8, mine ? 'You haven\u2019t completed a request yet.' : 'Nothing has been completed yet.');
+
+  var staff = D.byStaff(STATE.reqs);
+  document.getElementById('tbl-staff').innerHTML = staff.length
+    ? '<thead><tr><th>Person</th><th>Open</th><th>Completed</th><th>Avg first reply</th>'
+      + '<th class="t-right">Completed value</th><th class="t-right">Pending</th>'
+      + '<th class="t-right">Earned all time</th></tr></thead><tbody>'
+      + staff.map(function(p){
+          var s2 = p.stats;
+          return '<tr>'
+            + '<td><div class="t-name">'+D.esc(p.name)
+              + (p.email===ME.email?' <span style="color:#8FA0AE;font-weight:400">(you)</span>':'')
+              + '</div><div class="t-sub">'+D.esc(p.email)+'</div></td>'
+            + '<td class="t-num">'+s2.open+'</td>'
+            + '<td class="t-num">'+s2.completed+'</td>'
+            + '<td class="t-num">'+(s2.respAvg==null?'—':D.fmtDur(s2.respAvg))+'</td>'
+            + '<td class="t-num t-right">'+D.fmtMoney(s2.valueCompleted,{compact:true})+'</td>'
+            + '<td class="t-num t-right">'+D.fmtMoney(s2.earnedPending,{compact:true})+'</td>'
+            + '<td class="t-num t-right" style="font-weight:500;color:#0B7C78">'
+              + D.fmtMoney(s2.earnedAll,{compact:true})+'</td></tr>';
+        }).join('') + '</tbody>'
+    : emptyRow(7, 'No requests are assigned to anyone yet.');
+}
+
+/* ── Drawer ───────────────────────────────────────────────────────────── */
+function openRequest(id){
+  var r = byId(id);
+  if (!r) return;
+  STATE.openId = id;
+
+  var c = D.clock(r);
+  var due = D.dueMs(r);
+  var name = D.tenantName(r.orgId, STATE.reqs);
+
+  document.getElementById('dr-head').innerHTML =
+    '<div style="font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#8FA0AE">'
+      + D.esc(name) + '</div>'
+    + '<div style="font-size:19px;font-weight:700;color:var(--cs-navy);margin:4px 40px 8px 0;'
+      + 'letter-spacing:-.3px;line-height:1.25">' + D.esc(r.projectName) + '</div>'
+    + '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'
+      + statusPill(r.status) + priBadge(r.priority)
+      + '<span class="chip">'+D.esc(D.labelFor(D.TYPES, r.projectType))+'</span>'
+      + (r.projectId ? '<span class="chip" style="background:#E4F5F3;color:#0B6B67">Editor project linked</span>' : '')
+      + '</div>';
+
+  var scopeChips = r.scope.length
+    ? r.scope.map(function(k){ return '<span class="chip">'+D.esc(D.labelFor(D.SCOPE,k))+'</span>'; }).join('')
+    : '<span style="color:#A6B3BF;font-size:12.5px">Not specified</span>';
+
+  var respLine = c.settled
+    ? '<b class="mono" style="color:'+(c.frac<=1?'var(--ok)':'var(--bad)')+'">'+D.fmtDur(c.elapsed)+'</b>'
+      + ' <span style="color:#8FA0AE">against a '+D.fmtDur(c.target)+' target</span>'
+    : '<b class="mono" style="color:'+(c.state==='breach'?'var(--bad)':c.state==='warn'?'var(--warn)':'var(--ok)')+'">'
+      + clockText(c) + '</b> <span style="color:#8FA0AE">'
+      + (c.state==='breach' ? 'past the ' : 'left of the ') + D.fmtDur(c.target)+' target</span>';
+
+  document.getElementById('dr-body').innerHTML =
+      '<div class="sec" style="margin-top:0"><div class="sec-t">Response</div><div style="font-size:13.5px">'
+        + respLine + '</div></div>'
+
+    + '<div class="sec"><div class="sec-t">Request</div><dl class="kv">'
+      + kv('Contact', r.contactName
+          ? D.esc(r.contactName) + (r.contactEmail
+              ? ' · <a href="mailto:'+D.esc(r.contactEmail)+'">'+D.esc(r.contactEmail)+'</a>' : '')
+          : '—')
+      + (r.contactPhone ? kv('Phone', D.esc(r.contactPhone)) : '')
+      + kv('Site', r.address ? D.esc(r.address) : '—')
+      + kv('Size', (r.capacityMw ? D.esc(r.capacityMw)+' MW' : '—')
+          + (r.durationHrs ? ' · ' + D.esc(r.durationHrs) + ' h' : ''))
+      + kv('Submitted', D.fmtDateTime(r.submittedAt))
+      + kv('Due', r.dueDate ? D.fmtDate(due) + ' <span style="color:#8FA0AE">(client\u2019s date)</span>'
+                            : D.fmtDate(due) + ' <span style="color:#8FA0AE">(from priority)</span>')
+      + kv('Owner', ownerCell(r))
+      + '</dl></div>'
+
+    + '<div class="sec"><div class="sec-t">Scope requested</div><div>'+scopeChips+'</div></div>'
+
+    + (r.notes ? '<div class="sec"><div class="sec-t">Notes from the client</div>'
+        + '<div class="note">'+D.esc(r.notes)+'</div></div>' : '')
+
+    + (r.deliveryNote ? '<div class="sec"><div class="sec-t">What we delivered</div>'
+        + '<div class="note">'+D.esc(r.deliveryNote)+'</div></div>' : '')
+
+    + '<div class="sec"><div class="sec-t">Commercials</div>'
+      + '<div class="money-edit">'
+        + '<div class="fld" style="margin:0"><label for="dr-value">Contract value (USD)</label>'
+          + '<input id="dr-value" type="number" min="0" step="500" value="'+(r.value||'')+'"></div>'
+        + '<div class="fld" style="margin:0"><label for="dr-rate">Commission rate (%)</label>'
+          + '<input id="dr-rate" type="number" min="0" max="100" step="0.5" value="'
+          + (D.rate(r)*100) + '"></div>'
+      + '</div>'
+      + '<div class="payout-line"><span>Commission on completion</span>'
+        + '<b id="dr-payout">'+D.fmtMoney(D.payout(r))+'</b></div>'
+      + '<button class="btn-sm" style="margin-top:9px" onclick="saveMoney()">Save commercials</button>'
+      + '</div>'
+
+    + '<div class="sec"><div class="sec-t">History</div><ul class="log">'
+      + timeline(r) + '</ul></div>';
+
+  ['dr-value','dr-rate'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', previewPayout);
+  });
+
+  document.getElementById('dr-foot').innerHTML = actions(r);
+  document.getElementById('scrim').classList.add('on');
+  document.getElementById('drawer').classList.add('on');
+}
+
+function kv(k, v){ return '<dt>'+k+'</dt><dd>'+v+'</dd>'; }
+
+function previewPayout(){
+  var v = parseFloat(document.getElementById('dr-value').value) || 0;
+  var rt = (parseFloat(document.getElementById('dr-rate').value) || 0) / 100;
+  document.getElementById('dr-payout').textContent = D.fmtMoney(v * rt);
+}
+
+function timeline(r){
+  var items = [];
+  function add(when, label, who){
+    if (!D.ms(when)) return;
+    items.push({ t: D.ms(when), label: label, who: who || '' });
+  }
+  add(r.submittedAt, 'Submitted', r.contactName || r.contactEmail);
+  add(r.firstResponseAt, 'First reply sent');
+  add(r.startedAt, 'Build started', r.assignedName);
+  add(r.deliveredAt, 'Delivered to client', r.assignedName);
+  add(r.completedAt, 'Client signed off');
+  add(r.paidAt, 'Commission paid');
+  (r.activity || []).forEach(function(a){
+    if (a.type === 'note') items.push({ t: D.ms(a.at), label: a.text, who: a.byName });
+  });
+  items.sort(function(a,b){ return a.t - b.t; });
+  if (!items.length) return '<li><b>No history yet</b><span>—</span></li>';
+  return items.map(function(i){
+    return '<li><div><b>'+D.esc(i.label)+'</b><span>'+D.fmtDateTime(i.t)
+      + (i.who ? ' · ' + D.esc(i.who) : '') + '</span></div></li>';
+  }).join('');
+}
+
+/* Buttons follow the state. Showing every action all the time and letting
+   people pick a wrong one is how a request ends up delivered before it was
+   ever started. */
+function actions(r){
+  var b = [], id = r.id;
+  function btn(label, fn, pri){
+    b.push('<button class="btn-sm'+(pri?' pri':'')+'" onclick="'+fn+'">'+label+'</button>');
+  }
+  if (!r.assignedTo || r.assignedTo !== ME.email) btn('Assign to me', 'assignMe(\''+id+'\')');
+  if (!D.answered(r)) btn('Reply &amp; acknowledge', 'acknowledge(\''+id+'\')', true);
+
+  if (r.status === 'acknowledged' || r.status === 'new')
+    btn('Start build', 'startBuild(\''+id+'\')', D.answered(r));
+  if (r.projectId) btn('Open in editor', 'openEditor(\''+id+'\')');
+  if (r.status === 'in_progress') btn('Send to review', 'setStatus(\''+id+'\',\'review\')');
+  if (r.status === 'review' || r.status === 'in_progress')
+    btn('Deliver to client', 'deliver(\''+id+'\')', true);
+  if (r.status === 'delivered') btn('Mark completed', 'complete(\''+id+'\')', true);
+  if (r.status === 'completed' && !D.ms(r.paidAt)) btn('Mark commission paid', 'markPaid(\''+id+'\')');
+
+  btn('Add note', 'addNote(\''+id+'\')');
+  if (r.status === 'on_hold') btn('Take off hold', 'setStatus(\''+id+'\',\'acknowledged\')');
+  else if (r.status !== 'completed' && r.status !== 'cancelled') btn('Put on hold', 'hold(\''+id+'\')');
+  return b.join('');
+}
+
+function closeDrawer(){
+  STATE.openId = null;
+  document.getElementById('scrim').classList.remove('on');
+  document.getElementById('drawer').classList.remove('on');
+}
+
+/* ── Mutations ────────────────────────────────────────────────────────── */
+
+/* Every mutation goes through here so the local copy, the Firestore write and
+   the re-render stay in step — and so demo data never tries to hit the
+   network and fail confusingly. */
+function apply(id, fields, note, msg){
+  var r = byId(id);
+  if (!r) return Promise.resolve();
+
+  // optimistic local update, using a real Date where a serverTimestamp would go
+  for (var k in fields){
+    if (!fields.hasOwnProperty(k)) continue;
+    r[k] = (fields[k] && fields[k].isEqual && !(fields[k] instanceof Date))
+      ? new Date() : fields[k];
+  }
+  if (note) r.activity.push({ at:new Date().toISOString(), by:ME.email, byName:ME.name,
+                              type:note.type, text:note.text });
+  renderAll();
+  if (STATE.openId === id) openRequest(id);
+
+  if (STATE.demo || r._demo){ toast(msg + ' (sample data — not saved)'); return Promise.resolve(); }
+
+  return D.patch(id, fields, note).then(function(){
+    if (msg) toast(msg);
+  })['catch'](function(err){
+    console.error('[ops] write failed', err);
+    toast('Couldn\u2019t save: ' + (err.message || 'permission denied'));
+    refresh();   // pull the truth back rather than leaving a lie on screen
+  });
+}
+
+function ts(){ try { return firebase.firestore.FieldValue.serverTimestamp(); } catch(e){ return new Date(); } }
+
+function assignMe(id){
+  apply(id, { assignedTo: ME.email, assignedName: ME.name },
+        { type:'note', text:'Assigned to ' + ME.name }, 'Assigned to you');
+}
+
+/* Acknowledging is the moment the response clock stops. It also opens a
+   pre-addressed reply — the stamp and the actual email should not drift
+   apart, and the easiest way to guarantee that is to do both at once. */
+function acknowledge(id){
+  var r = byId(id);
+  if (!r) return;
+  var fields = { firstResponseAt: ts(), status: (r.status === 'new') ? 'acknowledged' : r.status };
+  if (!r.assignedTo){ fields.assignedTo = ME.email; fields.assignedName = ME.name; }
+  apply(id, fields, { type:'note', text:'First reply sent' }, 'Response logged');
+
+  if (r.contactEmail){
+    var body = 'Hi ' + (r.contactName || 'there') + ',\n\n'
+      + 'Thanks for sending over "' + r.projectName + '". We\u2019ve picked it up and '
+      + (r.assignedName || ME.name) + ' is on it.\n\n'
+      + 'We\u2019ll come back to you with the requested deliverables. If anything about the '
+      + 'scope has changed, just reply here.\n\n'
+      + 'Best,\n' + ME.name + '\nClearSky Energy Solutions';
+    window.open('mailto:' + encodeURIComponent(r.contactEmail)
+      + '?subject=' + encodeURIComponent('Re: ' + r.projectName)
+      + '&body=' + encodeURIComponent(body), '_blank');
+  }
+}
+
+/* Start the build: create the editor project under the CLIENT's org so the
+   finished work lands in their own portal, then open it. */
+function startBuild(id){
+  var r = byId(id);
+  if (!r) return;
+  if (r.projectId){ openEditor(id); return; }
+
+  if (STATE.demo || r._demo){
+    toast('Sample data — no editor project created');
+    apply(id, { status:'in_progress', startedAt: ts() }, null, 'Moved to in progress');
+    return;
+  }
+
+  toast('Creating the project…');
+  D.createLinkedProject(r).then(function(ref){
+    return apply(id, {
+      projectId: ref.id, status:'in_progress', startedAt: ts(),
+      assignedTo: r.assignedTo || ME.email, assignedName: r.assignedName || ME.name
+    }, { type:'note', text:'Editor project created' }, 'Project created').then(function(){
+      openEditorById(ref.id, r.orgId);
+    });
+  })['catch'](function(err){
+    console.error('[ops] project create failed', err);
+    toast('Couldn\u2019t create the project: ' + (err.message || 'permission denied'));
+  });
+}
+
+function openEditor(id){
+  var r = byId(id);
+  if (!r || !r.projectId) return;
+  openEditorById(r.projectId, r.orgId);
+}
+function openEditorById(projectId, orgId){
+  var slug = orgId ? String(orgId).split('.')[0] : '';
+  var url = '/editor.html?id=' + encodeURIComponent(projectId);
+  if (slug) url += '&org=' + encodeURIComponent(slug);
+  window.open(url, '_blank');
+}
+
+function setStatus(id, to){
+  var fields = { status: to };
+  if (to === 'in_progress' && !D.ms((byId(id)||{}).startedAt)) fields.startedAt = ts();
+  if (to === 'delivered'   && !D.ms((byId(id)||{}).deliveredAt)) fields.deliveredAt = ts();
+  if (to === 'completed'   && !D.ms((byId(id)||{}).completedAt)) fields.completedAt = ts();
+  if ((to !== 'new') && !D.answered(byId(id) || {})) fields.firstResponseAt = ts();
+  apply(id, fields, { type:'note', text:'Moved to ' + D.statusOf(to).label },
+        'Moved to ' + D.statusOf(to).label);
+}
+
+function deliver(id){
+  var r = byId(id);
+  if (!r) return;
+  var note = prompt('What are you sending them? This goes on the record and into the email.',
+                    r.deliveryNote || 'Site map and one-line issued.');
+  if (note === null) return;
+  apply(id, { status:'delivered', deliveredAt: ts(), deliveryNote: note },
+        { type:'note', text:'Delivered: ' + note }, 'Marked delivered');
+
+  if (r.contactEmail){
+    var body = 'Hi ' + (r.contactName || 'there') + ',\n\n'
+      + '"' + r.projectName + '" is ready.\n\n' + note + '\n\n'
+      + 'It\u2019s in your ClearSky-OMEGA portal now — sign in and it will be in your project '
+      + 'list. Let us know if you\u2019d like anything changed; otherwise a quick confirmation '
+      + 'closes it out.\n\nBest,\n' + ME.name + '\nClearSky Energy Solutions';
+    window.open('mailto:' + encodeURIComponent(r.contactEmail)
+      + '?subject=' + encodeURIComponent(r.projectName + ' — ready for you')
+      + '&body=' + encodeURIComponent(body), '_blank');
+  }
+}
+
+function complete(id){
+  var r = byId(id);
+  if (!r) return;
+  if (!r.value){
+    if (!confirm('This request has no contract value, so it will pay nothing.\n\n'
+      + 'Set the value in Commercials first, or complete it anyway?')) return;
+  }
+  apply(id, { status:'completed', completedAt: ts() },
+        { type:'note', text:'Client signed off' },
+        'Completed · ' + D.fmtMoney(D.payout(r)) + ' commission earned');
+}
+
+function markPaid(id){
+  if (!confirm('Mark this commission as paid? Do this only once payroll has actually sent it.')) return;
+  apply(id, { paidAt: ts() }, { type:'note', text:'Commission paid' }, 'Marked paid');
+}
+
+function hold(id){
+  var why = prompt('What\u2019s it blocked on?', '');
+  if (why === null) return;
+  apply(id, { status:'on_hold' },
+        { type:'note', text:'On hold' + (why ? ': ' + why : '') }, 'Put on hold');
+}
+
+function addNote(id){
+  var txt = prompt('Add a note to this request:', '');
+  if (!txt) return;
+  apply(id, {}, { type:'note', text: txt }, 'Note added');
+}
+
+function saveMoney(){
+  var id = STATE.openId;
+  if (!id) return;
+  var v  = parseFloat(document.getElementById('dr-value').value) || 0;
+  var rt = (parseFloat(document.getElementById('dr-rate').value) || 0) / 100;
+  if (rt < 0 || rt > 1){ toast('Commission rate should be between 0 and 100%.'); return; }
+  apply(id, { value: v, commissionRate: rt }, null,
+        'Saved · ' + D.fmtMoney(v * rt) + ' on completion');
+}
+</script>
+</body>
+</html>
