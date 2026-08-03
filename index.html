@@ -216,7 +216,7 @@ button{font-family:inherit}
 .seg button.on{background:#fff;color:var(--sap-blue);box-shadow:var(--shadow)}
 
 /* ── Board ────────────────────────────────────────────────────────────── */
-.board{display:grid;grid-template-columns:repeat(6,minmax(212px,1fr));gap:12px;align-items:start;
+.board{display:grid;grid-template-columns:repeat(5,minmax(212px,1fr));gap:12px;align-items:start;
   overflow-x:auto;padding-bottom:8px}
 .col{background:#E9EDF1;border-radius:var(--r);padding:10px;min-height:180px}
 .col.over{background:#DBE7F8;outline:2px dashed var(--sap-blue);outline-offset:-3px}
@@ -284,7 +284,7 @@ button{font-family:inherit}
   transition:opacity .2s,transform .2s;pointer-events:none;box-shadow:var(--shadow-lg)}
 .toast.on{opacity:1;transform:translateX(-50%)}
 
-@media(max-width:1080px){.board{grid-template-columns:repeat(6,232px)}}
+@media(max-width:1080px){.board{grid-template-columns:repeat(5,232px)}}
 @media(max-width:860px){
   #side{position:fixed;left:0;top:56px;bottom:0;z-index:130;transform:translateX(-100%);
     transition:transform .2s;box-shadow:var(--shadow-lg)}
@@ -358,7 +358,7 @@ button{font-family:inherit}
   <span class="tb-badge" id="tb-badge">Internal</span>
   <div class="tb-spacer"></div>
   <div class="tb-user">
-    <button class="btn-sm pri" onclick="location.href='/intake.html'">+ Log a request</button>
+    <button class="btn-sm pri" onclick="openIntake()">+ New intake</button>
     <button class="btn-sm" onclick="refresh(true)" id="btn-refresh">Refresh</button>
     <div class="tb-avatar" id="tb-avatar">–</div>
     <span class="tb-name" id="tb-name"></span>
@@ -388,7 +388,7 @@ button{font-family:inherit}
       <span>Earnings</span></button>
 
     <div class="sn-group">Tools</div>
-    <a class="sn-item" href="/intake.html">
+    <a class="sn-item" href="#" onclick="openIntake();return false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>
       <span>Project intake</span></a>
     <a class="sn-item" href="/editor.html">
@@ -410,7 +410,7 @@ button{font-family:inherit}
           <h1 id="dash-hi">Welcome back</h1>
           <p>Everything clients have asked for, how fast we answered, and what's payable.
              The response clock below is live — it counts down against the target for each
-             request's priority and keeps counting once it's blown.</p>
+             intake's priority and keeps counting once it's blown.</p>
         </div>
         <div class="ph-actions">
           <div class="seg">
@@ -453,11 +453,11 @@ button{font-family:inherit}
         <div>
           <div class="ph-eyebrow">Intake</div>
           <h1>Intake queue</h1>
-          <p>Every request submitted through the project intake form, newest first.
-             Open one to reply, assign it, build it in the editor and deliver it back.</p>
+          <p>Every intake submitted through the project intake tool, newest first.
+             Open one to reply, price it, build it in the editor and deliver it back.</p>
         </div>
         <div class="ph-actions">
-          <button class="btn-sm pri" onclick="location.href='/intake.html'">+ Log a request</button>
+          <button class="btn-sm pri" onclick="openIntake()">+ New intake</button>
         </div>
       </div>
       <div class="bar">
@@ -485,8 +485,8 @@ button{font-family:inherit}
         <div>
           <div class="ph-eyebrow">Delivery</div>
           <h1>Pipeline</h1>
-          <p>Drag a card to move it. Moving into <b>In progress</b> links an editor project;
-             moving into <b>Completed</b> makes its commission payable.</p>
+          <p>Drag a card to move it. Moving into <b>In production</b> links an editor project;
+             moving into <b>Delivered</b> makes its commission payable.</p>
         </div>
         <div class="ph-actions">
           <div class="seg">
@@ -518,8 +518,8 @@ button{font-family:inherit}
         <div>
           <div class="ph-eyebrow">Commission</div>
           <h1>Earnings</h1>
-          <p>Commission is earned when a client signs off — not when a file is sent.
-             <b>Pending</b> means earned and not yet paid; payroll marks it paid.</p>
+          <p>Commission is earned when the package is delivered. <b>Pending</b> means
+             earned and not yet paid; payroll marks it paid.</p>
         </div>
         <div class="ph-actions">
           <div class="seg">
@@ -531,7 +531,7 @@ button{font-family:inherit}
       <div class="kpis" id="earn-kpis"></div>
       <div class="card scroll-x" style="margin-bottom:18px">
         <div class="card-h"><div><h2>Completed work</h2>
-          <div class="sub">Every signed-off request and what it pays</div></div></div>
+          <div class="sub">Every delivered package and what it pays</div></div></div>
         <table class="tbl" id="tbl-earn"></table>
       </div>
       <div class="card scroll-x">
@@ -564,12 +564,14 @@ button{font-family:inherit}
 <script src="/ops-data.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════════════════
-   OMEGA OPS CONSOLE
+   OMEGA OPS CONSOLE  (v2)
 
-   Unlike a tenant portal, this page reads ACROSS orgs — that's its job. Auth
-   still gates who gets in (staff domains only, via OmegaBrand.resolve), but
-   the queue query is deliberately unscoped. Firestore rules have to permit
-   that; see README § "Firestore rules".
+   Reads `intake_projects` — the same queue the tenant portals write to and
+   intake-admin.html works from. Auth gates who gets in (staff only, via
+   OmegaBrand.resolve); the query itself is deliberately unscoped across orgs,
+   which the Firestore rules permit via isOmegaStaff().
+
+   Tenants are DISCOVERED, never hardcoded. See ops-data.js § v2.
    ══════════════════════════════════════════════════════════════════════════ */
 var D = OpsData;
 var WORKSPACES = {};
@@ -601,7 +603,6 @@ window._omegaReady = function(){
   auth.onAuthStateChanged(function(user){
     window._omegaReady();
     if (!user) { showLogin(); return; }
-
     var ws = OmegaBrand.resolve(user.email || '', WORKSPACES);
     if (!ws) {
       showAuthErr('This console is for ClearSky staff. ' +
@@ -654,6 +655,18 @@ function showApp(user){
   setInterval(tick, 1000);
 }
 
+/* The real intake tool lives on tools.csebuilders.com and is shared by every
+   tenant portal. This console does NOT ship its own — a second intake form is
+   exactly how the queue got split in the first place. */
+function intakeUrl(orgId){
+  var base = (window.CLEARSKY_CONFIG.ops || {}).intakeUrl
+          || 'https://tools.csebuilders.com/intake.html';
+  var url = base;
+  if (orgId) url += (base.indexOf('?') >= 0 ? '&' : '?') + 'org=' + encodeURIComponent(orgId);
+  return url;
+}
+function openIntake(orgId){ window.open(intakeUrl(orgId), '_blank'); }
+
 /* ── Auth actions ─────────────────────────────────────────────────────── */
 function signInWithGoogle(){
   clearAuthMsg();
@@ -696,12 +709,18 @@ document.addEventListener('keydown', function(e){
 function refresh(manual){
   var btn = document.getElementById('btn-refresh');
   if (btn){ btn.disabled = true; btn.textContent = 'Loading…'; }
-  return D.loadRequests().then(function(rows){
+
+  /* Load the org registry alongside the queue. It's allowed to fail — the
+     tenant list falls back to orgIds observed on records — so it never
+     blocks the queue itself. */
+  return D.loadOrgs()['catch'](function(){ return []; }).then(function(){
+    return D.loadRequests();
+  }).then(function(rows){
     STATE.reqs = rows; STATE.loaded = true; STATE.demo = false;
-    clearBanner('load-error');
+    clearBanner('load-error'); clearBanner('empty');
     if (!rows.length) showEmptyQueueBanner();
     renderAll();
-    if (manual) toast('Queue refreshed');
+    if (manual) toast('Queue refreshed · ' + rows.length + ' intake(s)');
   })['catch'](function(err){
     console.error('[ops] load failed', err);
     STATE.loaded = true;
@@ -717,17 +736,19 @@ function showLoadError(err){
   banner('load-error','err',
     perm ? 'Firestore refused the query' : 'Couldn\u2019t load the queue',
     perm
-      ? 'This console reads <code>intake_requests</code> across every tenant, which the standard '
-        + 'per-org rules block. Add the staff read rule from the README (\u00A7 Firestore rules), '
-        + 'then refresh. Until then you can work through the layout with sample data.'
+      ? 'This console reads <code>' + D.esc(D.collectionName()) + '</code> across every tenant. '
+        + 'Your rules already allow that via <code>isOmegaStaff()</code> — if you\u2019re seeing this, '
+        + 'either the merged rules aren\u2019t deployed yet or this account has no active '
+        + '<code>omega_staff</code> role. Check both, then refresh.'
       : D.esc(err && err.message || 'Unknown error.'),
-    perm ? { label:'Load sample data', fn:'loadSample()' } : { label:'Try again', fn:'refresh(true)' });
+    { label:'Load sample data', fn:'loadSample()' });
 }
 
 function showEmptyQueueBanner(){
-  banner('empty','info','No requests yet',
-    'Nothing has been submitted through the intake form. Log the first one yourself, or '
-    + 'load sample data to see how the console behaves with a full queue.',
+  banner('empty','info','Nothing in the queue',
+    'No intakes found in <code>' + D.esc(D.collectionName()) + '</code>. If you know there '
+    + 'should be, check that the collection name in <code>config.js</code> matches what the '
+    + 'intake tool writes to.',
     { label:'Load sample data', fn:'loadSample()' });
 }
 
@@ -782,23 +803,20 @@ window.addEventListener('hashchange', function(){
   if (v && v !== STATE.view) go(v, true);
 });
 
-/* ── Filter controls ──────────────────────────────────────────────────── */
+/* ── Filters ──────────────────────────────────────────────────────────── */
 function buildFilters(){
   var st = document.getElementById('q-status');
-  st.innerHTML = '<option value="open">Open (not completed)</option><option value="">Any status</option>'
-    + D.STATUS.map(function(s){ return '<option value="'+s.key+'">'+s.label+'</option>'; }).join('');
+  st.innerHTML = '<option value="open">Open (not delivered)</option>'
+    + '<option value="">Any status</option>'
+    + D.STATUS.map(function(s){ return '<option value="'+s.key+'">'+D.esc(s.label)+'</option>'; }).join('');
   st.value = 'open';
 }
 function buildClientFilter(){
   var sel = document.getElementById('q-client'), cur = sel.value;
-  var seen = {}, opts = [];
-  (STATE.reqs || []).forEach(function(r){
-    if (r.orgId && !seen[r.orgId]){ seen[r.orgId] = 1; opts.push(r.orgId); }
-  });
-  opts.sort();
+  var tenants = D.byTenant(STATE.reqs);
   sel.innerHTML = '<option value="">All clients</option>'
-    + opts.map(function(o){
-        return '<option value="'+D.esc(o)+'">'+D.esc(D.tenantName(o, STATE.reqs))+'</option>';
+    + tenants.map(function(t){
+        return '<option value="'+D.esc(t.orgId)+'">'+D.esc(t.name)+'</option>';
       }).join('');
   if (cur) sel.value = cur;
 }
@@ -839,10 +857,9 @@ function renderView(){
 }
 
 function renderCounts(){
-  var open = STATE.reqs.filter(function(r){
-    return r.status !== 'completed' && r.status !== 'cancelled';
-  });
-  var unanswered = STATE.reqs.filter(function(r){ return !D.answered(r); });
+  var pay = D.payableStatus();
+  var open = STATE.reqs.filter(function(r){ return D.inQueue(r) && r.status !== pay; });
+  var unanswered = STATE.reqs.filter(function(r){ return D.inQueue(r) && !D.answered(r); });
   var q = document.getElementById('c-queue');
   q.textContent = open.length;
   q.classList.toggle('hot', unanswered.length > 0);
@@ -866,27 +883,27 @@ function renderDashboard(){
       + '<div class="kpi-s">'+sub+'</div></div>';
   }
 
-  var slaTxt = (s.slaHitRate == null) ? 'no answered requests yet'
-    : Math.round(s.slaHitRate*100) + '% answered inside target';
+  var slaTxt = (s.slaHitRate == null) ? 'nothing measured yet'
+    : Math.round(s.slaHitRate*100) + '% inside target';
 
   document.getElementById('kpis').innerHTML =
       kpi(s.awaitingResponse ? 'alert' : 'good', 'Awaiting first reply', s.awaitingResponse,
           s.breached ? '<b style="color:var(--bad)">'+s.breached+' past target</b>'
                      : 'all inside target')
     + kpi('', 'Median first reply', s.respAvg7d != null ? D.fmtDur(s.respAvg7d) : '—',
-          s.respAvg7d != null ? 'last 7 days · ' + slaTxt : 'no data in the last 7 days')
-    + kpi('', 'In progress', s.working + s.review,
-          s.review + ' in review · ' + s.working + ' being built')
-    + kpi('', 'Awaiting sign-off', s.delivered,
-          s.delivered ? 'delivered, not signed off' : 'nothing sitting with clients')
-    + kpi('good', 'Completed this month', s.completedThisMonth,
-          s.completed + ' completed all time')
+          s.respAvg7d != null ? 'last 7 days · ' + slaTxt
+            : (s.unmeasured ? s.unmeasured + ' answered before tracking began' : 'no data yet'))
+    + kpi('', 'Quoted / accepted', s.quoted + s.accepted,
+          s.quoted + ' awaiting a decision · ' + s.accepted + ' ready to build')
+    + kpi('', 'In production', s.working,
+          s.working ? 'being built now' : 'nothing on the bench')
+    + kpi('good', 'Delivered this month', s.completedThisMonth,
+          s.completed + ' delivered all time')
     + kpi('money', 'Earned this month', D.fmtMoney(s.earnedThisMonth, {compact:true}),
           D.fmtMoney(s.earnedPending, {compact:true}) + ' pending payout');
 
   renderDesk(reqs);
 
-  // Response time by client
   var tenants = D.byTenant(reqs).filter(function(t){ return t.requests.length; });
   tenants.sort(function(a,b){
     var x = a.stats.respAvg == null ? Infinity : a.stats.respAvg;
@@ -894,7 +911,7 @@ function renderDashboard(){
     return x - y;
   });
   document.getElementById('tbl-resp').innerHTML = tenants.length
-    ? '<thead><tr><th>Client</th><th>Requests</th><th>Avg first reply</th><th class="t-right">Open</th></tr></thead><tbody>'
+    ? '<thead><tr><th>Client</th><th>Intakes</th><th>Avg first reply</th><th class="t-right">Open</th></tr></thead><tbody>'
       + tenants.map(function(t){
           var v = t.stats.respAvg;
           var col = v == null ? '#8FA0AE' : (v <= 4*3600000 ? 'var(--ok)' : v <= 24*3600000 ? 'var(--warn)' : 'var(--bad)');
@@ -904,14 +921,13 @@ function renderDashboard(){
             + '<td class="t-num" style="color:'+col+'">'+(v==null?'—':D.fmtDur(v))+'</td>'
             + '<td class="t-num t-right">'+t.stats.open+'</td></tr>';
         }).join('') + '</tbody>'
-    : emptyRow(4, 'No client requests yet.');
+    : emptyRow(4, 'No client intakes yet.');
 
-  // Recent activity
-  var recent = reqs.slice().sort(function(a,b){
+  var recent = reqs.filter(D.inQueue).slice().sort(function(a,b){
     return lastTouch(b) - lastTouch(a);
   }).slice(0, 8);
   document.getElementById('tbl-recent').innerHTML = recent.length
-    ? '<thead><tr><th>Request</th><th>Status</th><th class="t-right">When</th></tr></thead><tbody>'
+    ? '<thead><tr><th>Intake</th><th>Status</th><th class="t-right">When</th></tr></thead><tbody>'
       + recent.map(function(r){
           return '<tr onclick="openRequest(\''+r.id+'\')">'
             + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
@@ -923,15 +939,12 @@ function renderDashboard(){
 }
 
 function lastTouch(r){
-  return Math.max(D.ms(r.submittedAt), D.ms(r.firstResponseAt), D.ms(r.startedAt),
-                  D.ms(r.deliveredAt), D.ms(r.completedAt));
+  return Math.max(D.ms(r.submittedAt), D.ms(r.firstResponseAt), D.ms(r.startedAt), D.ms(r.deliveredAt));
 }
 
 /* The response desk. Anything unanswered, worst first. */
 function renderDesk(reqs){
-  var open = reqs.filter(function(r){
-    return !D.answered(r) && r.status !== 'cancelled';
-  });
+  var open = reqs.filter(function(r){ return D.inQueue(r) && !D.answered(r); });
   open.sort(function(a,b){ return D.clock(b).frac - D.clock(a).frac; });
 
   var sub = document.getElementById('desk-sub');
@@ -940,12 +953,11 @@ function renderDesk(reqs){
   if (!open.length){
     sub.textContent = 'Nothing waiting on a first reply';
     el.innerHTML = '<div class="empty"><h3>Desk is clear</h3>'
-      + '<p>Every request has had a human reply. New submissions land here the moment '
+      + '<p>Every intake has had a human reply. New submissions land here the moment '
       + 'they arrive.</p></div>';
     return;
   }
-  sub.textContent = open.length + ' waiting on a first reply · '
-    + 'target ' + slaSummary();
+  sub.textContent = open.length + ' waiting on a first reply · target ' + slaSummary();
 
   el.innerHTML = open.map(function(r){
     var c = D.clock(r);
@@ -971,15 +983,13 @@ function renderDesk(reqs){
 function clockText(c){
   return (c.remaining >= 0) ? D.fmtDur(c.remaining) : '+' + D.fmtDur(-c.remaining);
 }
-
 function slaSummary(){
   var s = (window.CLEARSKY_CONFIG.ops || {}).sla || {};
   return s.critical + 'h critical · ' + s.rush + 'h rush · ' + s.standard + 'h standard';
 }
 
-/* Per-second update of just the live clocks. Re-rendering the whole desk
-   every second would fight with hover and scroll, so this touches only the
-   numbers, the bar width and the state class. */
+/* Per-second update of just the live clocks — re-rendering the whole desk
+   every second would fight with hover and scroll. */
 function tick(){
   var rows = document.querySelectorAll('[data-tick]');
   if (!rows.length) return;
@@ -988,12 +998,12 @@ function tick(){
     var r = byId(row.dataset.tick);
     if (!r) continue;
     var c = D.clock(r);
-    if (c.settled) continue;
+    if (c.settled || c.unmeasured) continue;
     row.className = row.className.replace(/s-(ok|warn|breach)/, 's-' + c.state);
     var fill = row.querySelector('.desk-fill'); if (fill) fill.style.width = c.pct + '%';
     var cap  = row.querySelector('.desk-cap span'); if (cap) cap.textContent = D.fmtDur(c.elapsed) + ' elapsed';
     var clk  = row.querySelector('.desk-clock');
-    if (clk){
+    if (clk && clk.firstChild){
       clk.classList.toggle('pulse', c.state === 'breach');
       clk.firstChild.nodeValue = clockText(c);
       var sm = clk.querySelector('small');
@@ -1013,18 +1023,22 @@ function byId(id){
   return null;
 }
 
-/* ── Shared cell renderers ────────────────────────────────────────────── */
+/* ── Cell renderers ───────────────────────────────────────────────────── */
 function statusPill(key){
   var s = D.statusOf(key);
   return '<span class="pill" style="background:'+hexA(s.color,.10)+';color:'+s.color+'">'
-    + '<span class="dot" style="background:'+s.color+'"></span>'+s.label+'</span>';
+    + '<span class="dot" style="background:'+s.color+'"></span>'+D.esc(s.label)+'</span>';
 }
 function priBadge(key){
   var p = D.priorityOf(key);
   return '<span class="pri" style="background:'+hexA(p.color,.12)+';color:'+p.color+'">'+p.label+'</span>';
 }
+function purposeBadge(r){
+  if (r.billable) return '';
+  return '<span class="pri" style="background:#EEF1F4;color:#6B7280">Self-serve</span>';
+}
 function hexA(hex, a){
-  var h = hex.replace('#','');
+  var h = String(hex).replace('#','');
   var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
   return 'rgba('+r+','+g+','+b+','+a+')';
 }
@@ -1037,6 +1051,10 @@ function ownerCell(r){
 }
 function respCell(r){
   var c = D.clock(r);
+  if (c.unmeasured){
+    return '<span class="t-num" style="color:#A6B3BF" title="Answered before response tracking '
+      + 'started, so the time is unknown rather than zero.">—</span>';
+  }
   if (c.settled){
     var ok = c.frac <= 1;
     return '<span class="t-num" style="color:'+(ok?'var(--ok)':'var(--bad)')+'" title="'
@@ -1058,10 +1076,13 @@ function queueRows(){
   var st = document.getElementById('q-status').value;
   var pr = document.getElementById('q-priority').value;
   var cl = document.getElementById('q-client').value;
+  var pay = D.payableStatus();
 
   return STATE.reqs.filter(function(r){
-    if (st === 'open'){ if (r.status === 'completed' || r.status === 'cancelled') return false; }
-    else if (st && r.status !== st) return false;
+    if (st === 'open'){ if (!D.inQueue(r) || r.status === pay) return false; }
+    else if (st){ if (r.status !== st) return false; }
+    else if (!D.inQueue(r) && !D.statusOf(r.status).pre) { /* keep */ }
+
     if (pr && r.priority !== pr) return false;
     if (cl && r.orgId !== cl) return false;
     if (STATE.queueOwner === 'mine' && r.assignedTo !== ME.email) return false;
@@ -1079,16 +1100,17 @@ function renderQueue(){
   var rows = queueRows();
   var t = document.getElementById('tbl-queue');
   if (!rows.length){
-    t.innerHTML = '<thead><tr><th>Request</th></tr></thead>'
-      + emptyRow(1, STATE.reqs.length ? 'No requests match those filters.' : 'The queue is empty.');
+    t.innerHTML = '<thead><tr><th>Intake</th></tr></thead>'
+      + emptyRow(1, STATE.reqs.length ? 'No intakes match those filters.' : 'The queue is empty.');
     return;
   }
   t.innerHTML =
-    '<thead><tr><th>Request</th><th>Client</th><th>Priority</th><th>Submitted</th>'
-    + '<th>First reply</th><th>Status</th><th>Owner</th><th class="t-right">Value</th></tr></thead><tbody>'
+    '<thead><tr><th>Intake</th><th>Client</th><th>Priority</th><th>Submitted</th>'
+    + '<th>First reply</th><th>Status</th><th>Owner</th><th class="t-right">Fee</th></tr></thead><tbody>'
     + rows.map(function(r){
+        var v = D.value(r);
         return '<tr data-tick="'+r.id+'" onclick="openRequest(\''+r.id+'\')">'
-          + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
+          + '<td><div class="t-name">'+D.esc(r.projectName)+' '+purposeBadge(r)+'</div>'
             + '<div class="t-sub">'+D.esc(D.labelFor(D.TYPES, r.projectType))
             + (r.address ? ' · ' + D.esc(r.address) : '') + '</div></td>'
           + '<td>'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</td>'
@@ -1097,7 +1119,7 @@ function renderQueue(){
           + '<td>'+respCell(r)+'</td>'
           + '<td>'+statusPill(r.status)+'</td>'
           + '<td>'+ownerCell(r)+'</td>'
-          + '<td class="t-num t-right">'+(r.value ? D.fmtMoney(r.value,{compact:true}) : '—')+'</td>'
+          + '<td class="t-num t-right">'+(v ? D.fmtMoney(v,{compact:true}) : '—')+'</td>'
           + '</tr>';
       }).join('') + '</tbody>';
 }
@@ -1106,21 +1128,17 @@ function renderQueue(){
 function renderBoard(){
   var cols = D.STATUS.filter(function(s){ return s.pipeline; });
   var reqs = STATE.reqs.filter(function(r){
-    if (r.status === 'cancelled') return false;
+    if (!D.inQueue(r)) return false;
     if (STATE.boardOwner === 'mine' && r.assignedTo !== ME.email) return false;
     return true;
   });
 
   document.getElementById('board').innerHTML = cols.map(function(col){
     var inCol = reqs.filter(function(r){ return r.status === col.key; });
-    // on_hold has no column of its own; park those cards with their last step
-    if (col.key === 'acknowledged'){
-      inCol = inCol.concat(reqs.filter(function(r){ return r.status === 'on_hold'; }));
-    }
     return '<div class="col" data-col="'+col.key+'" ondragover="colOver(event)" '
       + 'ondragleave="colLeave(event)" ondrop="colDrop(event)">'
       + '<div class="col-h"><span class="dot" style="background:'+col.color+'"></span>'
-        + '<b>'+col.label+'</b><span class="n">'+inCol.length+'</span></div>'
+        + '<b>'+D.esc(col.label)+'</b><span class="n">'+inCol.length+'</span></div>'
       + (inCol.length ? inCol.map(pcard).join('')
           : '<div class="col-empty">'+D.esc(col.hint)+'</div>')
       + '</div>';
@@ -1128,15 +1146,15 @@ function renderBoard(){
 }
 
 function pcard(r){
-  var due = D.dueMs(r), late = due && Date.now() > due && r.status !== 'completed';
+  var due = D.dueMs(r), late = due && Date.now() > due && r.status !== D.payableStatus();
+  var v = D.value(r);
   return '<div class="pcard" draggable="true" data-id="'+r.id+'" '
     + 'ondragstart="cardDrag(event)" ondragend="cardDrop(event)" onclick="openRequest(\''+r.id+'\')">'
     + '<div class="pcard-c">'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</div>'
     + '<div class="pcard-n">'+D.esc(r.projectName)+'</div>'
     + '<div class="pcard-f">'+priBadge(r.priority)
-      + (r.status === 'on_hold' ? '<span class="pri" style="background:#EEF1F4;color:#6B7280">On hold</span>' : '')
       + (late ? '<span class="pri" style="background:#FDE7E7;color:var(--bad)">Late</span>' : '')
-      + '<span class="pcard-v">'+(r.value ? D.fmtMoney(r.value,{compact:true}) : '—')+'</span></div>'
+      + '<span class="pcard-v">'+(v ? D.fmtMoney(v,{compact:true}) : '—')+'</span></div>'
     + '</div>';
 }
 
@@ -1165,14 +1183,17 @@ function colDrop(e){
 function renderClients(){
   var tenants = D.byTenant(STATE.reqs);
   var t = document.getElementById('tbl-clients');
-  if (!tenants.length){ t.innerHTML = emptyRow(1, 'No clients yet.'); return; }
+  if (!tenants.length){ t.innerHTML = emptyRow(1, 'No clients discovered yet.'); return; }
 
-  t.innerHTML = '<thead><tr><th>Client</th><th>Requests</th><th>Open</th><th>Avg first reply</th>'
-    + '<th>Completed</th><th class="t-right">Completed value</th><th class="t-right">Last activity</th></tr></thead><tbody>'
+  t.innerHTML = '<thead><tr><th>Client</th><th>Intakes</th><th>Open</th><th>Avg first reply</th>'
+    + '<th>Delivered</th><th class="t-right">Delivered value</th>'
+    + '<th class="t-right">Last activity</th></tr></thead><tbody>'
     + tenants.map(function(c){
         var s = c.stats;
         return '<tr onclick="openClient(\''+D.esc(c.orgId)+'\')">'
-          + '<td><div class="t-name">'+D.esc(c.name)+'</div><div class="t-sub">'+D.esc(c.orgId)+'</div></td>'
+          + '<td><div class="t-name">'+D.esc(c.name)+'</div><div class="t-sub">'+D.esc(c.orgId)
+            + (c.source === 'observed' ? ' · <span style="color:#0EA5E9">discovered</span>' : '')
+            + '</div></td>'
           + '<td class="t-num">'+c.requests.length+'</td>'
           + '<td class="t-num">'+s.open+'</td>'
           + '<td class="t-num">'+(s.respAvg==null?'—':D.fmtDur(s.respAvg))+'</td>'
@@ -1194,26 +1215,27 @@ function openClient(orgId, keep){
   box.style.display = 'block';
   box.innerHTML =
     '<div class="card-h"><div><h2>'+D.esc(name)+'</h2>'
-      + '<div class="sub">'+D.esc(orgId)+' · '+rows.length+' request(s) · '
+      + '<div class="sub">'+D.esc(orgId)+' · '+rows.length+' intake(s) · '
       + D.fmtMoney(s.valueCompleted + s.valueOpen, {compact:true}) + ' lifetime value</div></div>'
       + '<button class="btn-sm" onclick="closeClient()">Close</button></div>'
     + (rows.length
-      ? '<div class="scroll-x"><table class="tbl"><thead><tr><th>Request</th><th>Submitted</th>'
-        + '<th>First reply</th><th>Status</th><th>Owner</th><th class="t-right">Value</th></tr></thead><tbody>'
+      ? '<div class="scroll-x"><table class="tbl"><thead><tr><th>Intake</th><th>Submitted</th>'
+        + '<th>First reply</th><th>Status</th><th>Owner</th><th class="t-right">Fee</th></tr></thead><tbody>'
         + rows.map(function(r){
+            var v = D.value(r);
             return '<tr onclick="openRequest(\''+r.id+'\')">'
-              + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
+              + '<td><div class="t-name">'+D.esc(r.projectName)+' '+purposeBadge(r)+'</div>'
               + '<div class="t-sub">'+D.esc(D.labelFor(D.TYPES, r.projectType))+'</div></td>'
               + '<td class="t-num">'+D.fmtDate(r.submittedAt)+'</td>'
               + '<td>'+respCell(r)+'</td>'
               + '<td>'+statusPill(r.status)+'</td>'
               + '<td>'+ownerCell(r)+'</td>'
-              + '<td class="t-num t-right">'+(r.value?D.fmtMoney(r.value,{compact:true}):'—')+'</td></tr>';
+              + '<td class="t-num t-right">'+(v?D.fmtMoney(v,{compact:true}):'—')+'</td></tr>';
           }).join('') + '</tbody></table></div>'
       : '<div class="empty"><h3>Nothing submitted yet</h3><p>'+D.esc(name)
-        + ' is set up on the platform but hasn\u2019t sent a request through the intake form.</p>'
-        + '<button class="btn-sm pri" onclick="location.href=\'/intake.html?client='
-        + encodeURIComponent(orgId)+'\'">Log one for them</button></div>');
+        + ' is on the platform but hasn\u2019t sent an intake.</p>'
+        + '<button class="btn-sm pri" onclick="openIntake(\''+D.esc(orgId)+'\')">'
+        + 'Open their intake form</button></div>');
   if (!keep) box.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 function closeClient(){
@@ -1224,9 +1246,7 @@ function closeClient(){
 /* ── Earnings ─────────────────────────────────────────────────────────── */
 function renderEarnings(){
   var mine = STATE.earnScope === 'mine';
-  var rows = STATE.reqs.filter(function(r){
-    return !mine || r.assignedTo === ME.email;
-  });
+  var rows = STATE.reqs.filter(function(r){ return !mine || r.assignedTo === ME.email; });
   var s = D.summarize(rows);
 
   function kpi(cls,label,value,sub){
@@ -1236,21 +1256,21 @@ function renderEarnings(){
   }
   document.getElementById('earn-kpis').innerHTML =
       kpi('money','Earned this month', D.fmtMoney(s.earnedThisMonth,{compact:true}),
-          s.completedThisMonth + ' project(s) signed off')
+          s.completedThisMonth + ' package(s) delivered')
     + kpi('money','Pending payout', D.fmtMoney(s.earnedPending,{compact:true}),
           'earned, not yet marked paid')
     + kpi('good','Paid to date', D.fmtMoney(s.earnedPaid,{compact:true}), 'all time')
-    + kpi('','Completed value', D.fmtMoney(s.valueCompleted,{compact:true}),
-          s.completed + ' completed project(s)')
+    + kpi('','Delivered value', D.fmtMoney(s.valueCompleted,{compact:true}),
+          s.completed + ' delivered package(s)')
     + kpi('','In flight', D.fmtMoney(s.valueOpen,{compact:true}),
-          s.open + ' open request(s), not yet earned');
+          s.open + ' open intake(s), not yet earned');
 
   var done = rows.filter(function(r){ return D.isEarned(r); })
-                 .sort(function(a,b){ return D.ms(b.completedAt) - D.ms(a.completedAt); });
+                 .sort(function(a,b){ return D.ms(b.deliveredAt) - D.ms(a.deliveredAt); });
 
   document.getElementById('tbl-earn').innerHTML = done.length
-    ? '<thead><tr><th>Project</th><th>Client</th><th>Completed</th><th>Cycle time</th>'
-      + '<th class="t-right">Value</th><th class="t-right">Rate</th>'
+    ? '<thead><tr><th>Project</th><th>Client</th><th>Delivered</th><th>Cycle time</th>'
+      + '<th class="t-right">Fee</th><th class="t-right">Rate</th>'
       + '<th class="t-right">Commission</th><th>Payout</th></tr></thead><tbody>'
       + done.map(function(r){
           var cyc = D.cycleMs(r);
@@ -1258,9 +1278,9 @@ function renderEarnings(){
             + '<td><div class="t-name">'+D.esc(r.projectName)+'</div>'
               + (mine?'':'<div class="t-sub">'+D.esc(r.assignedName||r.assignedTo||'—')+'</div>')+'</td>'
             + '<td>'+D.esc(D.tenantName(r.orgId, STATE.reqs))+'</td>'
-            + '<td class="t-num">'+D.fmtDate(r.completedAt)+'</td>'
+            + '<td class="t-num">'+D.fmtDate(r.deliveredAt)+'</td>'
             + '<td class="t-num">'+(cyc==null?'—':D.fmtDur(cyc))+'</td>'
-            + '<td class="t-num t-right">'+D.fmtMoney(r.value)+'</td>'
+            + '<td class="t-num t-right">'+D.fmtMoney(D.value(r))+'</td>'
             + '<td class="t-num t-right">'+(D.rate(r)*100).toFixed(1)+'%</td>'
             + '<td class="t-num t-right" style="font-weight:500;color:#0B7C78">'+D.fmtMoney(D.payout(r))+'</td>'
             + '<td>'+(D.isPaid(r)
@@ -1269,12 +1289,12 @@ function renderEarnings(){
                 : '<span class="pill" style="background:rgba(217,119,6,.10);color:var(--warn)">'
                   + '<span class="dot" style="background:var(--warn)"></span>Pending</span>')+'</td></tr>';
         }).join('') + '</tbody>'
-    : emptyRow(8, mine ? 'You haven\u2019t completed a request yet.' : 'Nothing has been completed yet.');
+    : emptyRow(8, mine ? 'You haven\u2019t delivered anything yet.' : 'Nothing has been delivered yet.');
 
   var staff = D.byStaff(STATE.reqs);
   document.getElementById('tbl-staff').innerHTML = staff.length
-    ? '<thead><tr><th>Person</th><th>Open</th><th>Completed</th><th>Avg first reply</th>'
-      + '<th class="t-right">Completed value</th><th class="t-right">Pending</th>'
+    ? '<thead><tr><th>Person</th><th>Open</th><th>Delivered</th><th>Avg first reply</th>'
+      + '<th class="t-right">Delivered value</th><th class="t-right">Pending</th>'
       + '<th class="t-right">Earned all time</th></tr></thead><tbody>'
       + staff.map(function(p){
           var s2 = p.stats;
@@ -1290,7 +1310,7 @@ function renderEarnings(){
             + '<td class="t-num t-right" style="font-weight:500;color:#0B7C78">'
               + D.fmtMoney(s2.earnedAll,{compact:true})+'</td></tr>';
         }).join('') + '</tbody>'
-    : emptyRow(7, 'No requests are assigned to anyone yet.');
+    : emptyRow(7, 'No intakes are assigned to anyone yet.');
 }
 
 /* ── Drawer ───────────────────────────────────────────────────────────── */
@@ -1302,6 +1322,7 @@ function openRequest(id){
   var c = D.clock(r);
   var due = D.dueMs(r);
   var name = D.tenantName(r.orgId, STATE.reqs);
+  var v = D.value(r);
 
   document.getElementById('dr-head').innerHTML =
     '<div style="font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#8FA0AE">'
@@ -1309,7 +1330,7 @@ function openRequest(id){
     + '<div style="font-size:19px;font-weight:700;color:var(--cs-navy);margin:4px 40px 8px 0;'
       + 'letter-spacing:-.3px;line-height:1.25">' + D.esc(r.projectName) + '</div>'
     + '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">'
-      + statusPill(r.status) + priBadge(r.priority)
+      + statusPill(r.status) + priBadge(r.priority) + purposeBadge(r)
       + '<span class="chip">'+D.esc(D.labelFor(D.TYPES, r.projectType))+'</span>'
       + (r.projectId ? '<span class="chip" style="background:#E4F5F3;color:#0B6B67">Editor project linked</span>' : '')
       + '</div>';
@@ -1318,55 +1339,77 @@ function openRequest(id){
     ? r.scope.map(function(k){ return '<span class="chip">'+D.esc(D.labelFor(D.SCOPE,k))+'</span>'; }).join('')
     : '<span style="color:#A6B3BF;font-size:12.5px">Not specified</span>';
 
-  var respLine = c.settled
-    ? '<b class="mono" style="color:'+(c.frac<=1?'var(--ok)':'var(--bad)')+'">'+D.fmtDur(c.elapsed)+'</b>'
-      + ' <span style="color:#8FA0AE">against a '+D.fmtDur(c.target)+' target</span>'
-    : '<b class="mono" style="color:'+(c.state==='breach'?'var(--bad)':c.state==='warn'?'var(--warn)':'var(--ok)')+'">'
+  var respLine;
+  if (c.unmeasured){
+    respLine = '<span style="color:#8FA0AE">Answered before response tracking started, so the '
+      + 'time is unknown. New intakes are measured from now on.</span>';
+  } else if (c.settled){
+    respLine = '<b class="mono" style="color:'+(c.frac<=1?'var(--ok)':'var(--bad)')+'">'+D.fmtDur(c.elapsed)+'</b>'
+      + ' <span style="color:#8FA0AE">against a '+D.fmtDur(c.target)+' target</span>';
+  } else {
+    respLine = '<b class="mono" style="color:'
+      + (c.state==='breach'?'var(--bad)':c.state==='warn'?'var(--warn)':'var(--ok)')+'">'
       + clockText(c) + '</b> <span style="color:#8FA0AE">'
       + (c.state==='breach' ? 'past the ' : 'left of the ') + D.fmtDur(c.target)+' target</span>';
+  }
+
+  var extra = D.unmapped(r);
 
   document.getElementById('dr-body').innerHTML =
       '<div class="sec" style="margin-top:0"><div class="sec-t">Response</div><div style="font-size:13.5px">'
         + respLine + '</div></div>'
 
-    + '<div class="sec"><div class="sec-t">Request</div><dl class="kv">'
+    + '<div class="sec"><div class="sec-t">Intake</div><dl class="kv">'
       + kv('Contact', r.contactName
           ? D.esc(r.contactName) + (r.contactEmail
               ? ' · <a href="mailto:'+D.esc(r.contactEmail)+'">'+D.esc(r.contactEmail)+'</a>' : '')
-          : '—')
+          : (r.contactEmail ? '<a href="mailto:'+D.esc(r.contactEmail)+'">'+D.esc(r.contactEmail)+'</a>' : '—'))
+      + (r.contactRole ? kv('Role', D.esc(r.contactRole)) : '')
       + (r.contactPhone ? kv('Phone', D.esc(r.contactPhone)) : '')
       + kv('Site', r.address ? D.esc(r.address) : '—')
       + kv('Size', (r.capacityMw ? D.esc(r.capacityMw)+' MW' : '—')
           + (r.durationHrs ? ' · ' + D.esc(r.durationHrs) + ' h' : ''))
+      + kv('Path', D.esc((D.PURPOSE[r.purpose] || {}).label || r.purpose))
       + kv('Submitted', D.fmtDateTime(r.submittedAt))
-      + kv('Due', r.dueDate ? D.fmtDate(due) + ' <span style="color:#8FA0AE">(client\u2019s date)</span>'
-                            : D.fmtDate(due) + ' <span style="color:#8FA0AE">(from priority)</span>')
+      + kv('Due', due ? (D.fmtDate(due) + ' <span style="color:#8FA0AE">('
+            + (r.dueDate ? 'client\u2019s date' : 'from priority') + ')</span>') : '—')
       + kv('Owner', ownerCell(r))
       + '</dl></div>'
 
-    + '<div class="sec"><div class="sec-t">Scope requested</div><div>'+scopeChips+'</div></div>'
+    + '<div class="sec"><div class="sec-t">Deliverables requested</div><div>'+scopeChips+'</div></div>'
 
     + (r.notes ? '<div class="sec"><div class="sec-t">Notes from the client</div>'
         + '<div class="note">'+D.esc(r.notes)+'</div></div>' : '')
 
-    + (r.deliveryNote ? '<div class="sec"><div class="sec-t">What we delivered</div>'
-        + '<div class="note">'+D.esc(r.deliveryNote)+'</div></div>' : '')
+    + (r.internalNotes ? '<div class="sec"><div class="sec-t">Internal notes</div>'
+        + '<div class="note">'+D.esc(r.internalNotes)+'</div></div>' : '')
 
     + '<div class="sec"><div class="sec-t">Commercials</div>'
       + '<div class="money-edit">'
-        + '<div class="fld" style="margin:0"><label for="dr-value">Contract value (USD)</label>'
-          + '<input id="dr-value" type="number" min="0" step="500" value="'+(r.value||'')+'"></div>'
+        + '<div class="fld" style="margin:0"><label for="dr-value">Quoted fee (USD)</label>'
+          + '<input id="dr-value" type="number" min="0" step="500" value="'+(v||'')+'"></div>'
         + '<div class="fld" style="margin:0"><label for="dr-rate">Commission rate (%)</label>'
           + '<input id="dr-rate" type="number" min="0" max="100" step="0.5" value="'
           + (D.rate(r)*100) + '"></div>'
       + '</div>'
-      + '<div class="payout-line"><span>Commission on completion</span>'
+      + '<div class="payout-line"><span>Commission on delivery</span>'
         + '<b id="dr-payout">'+D.fmtMoney(D.payout(r))+'</b></div>'
       + '<button class="btn-sm" style="margin-top:9px" onclick="saveMoney()">Save commercials</button>'
+      + '<div class="kpi-s" style="margin-top:7px">Writes <code>quote.total</code>. Your rules '
+        + 'restrict this to administrators — a rep saving here will see a permission error, which '
+        + 'is the intended behaviour.</div>'
       + '</div>'
 
     + '<div class="sec"><div class="sec-t">History</div><ul class="log">'
-      + timeline(r) + '</ul></div>';
+      + timeline(r) + '</ul></div>'
+
+    + (extra
+        ? '<div class="sec"><div class="sec-t">Fields the console didn\u2019t recognise</div>'
+          + '<div class="note" style="font-family:\'DM Mono\',monospace;font-size:11.5px">'
+          + D.esc(JSON.stringify(extra, null, 2)) + '</div>'
+          + '<div class="kpi-s" style="margin-top:6px">These exist on the record but aren\u2019t '
+          + 'mapped yet. Tell me the field names and they\u2019ll render properly.</div></div>'
+        : '');
 
   ['dr-value','dr-rate'].forEach(function(id){
     var el = document.getElementById(id);
@@ -1390,28 +1433,26 @@ function timeline(r){
   var items = [];
   function add(when, label, who){
     if (!D.ms(when)) return;
-    items.push({ t: D.ms(when), label: label, who: who || '' });
+    items.push({ t:D.ms(when), label:label, who:who || '' });
   }
   add(r.submittedAt, 'Submitted', r.contactName || r.contactEmail);
   add(r.firstResponseAt, 'First reply sent');
   add(r.startedAt, 'Build started', r.assignedName);
   add(r.deliveredAt, 'Delivered to client', r.assignedName);
-  add(r.completedAt, 'Client signed off');
   add(r.paidAt, 'Commission paid');
   (r.activity || []).forEach(function(a){
-    if (a.type === 'note') items.push({ t: D.ms(a.at), label: a.text, who: a.byName });
+    if (a && a.type === 'note') items.push({ t:D.ms(a.at), label:a.text, who:a.byName });
   });
   items.sort(function(a,b){ return a.t - b.t; });
-  if (!items.length) return '<li><b>No history yet</b><span>—</span></li>';
+  if (!items.length) return '<li><div><b>No history yet</b><span>—</span></div></li>';
   return items.map(function(i){
     return '<li><div><b>'+D.esc(i.label)+'</b><span>'+D.fmtDateTime(i.t)
       + (i.who ? ' · ' + D.esc(i.who) : '') + '</span></div></li>';
   }).join('');
 }
 
-/* Buttons follow the state. Showing every action all the time and letting
-   people pick a wrong one is how a request ends up delivered before it was
-   ever started. */
+/* Buttons follow the state. Showing every action always and letting people
+   pick a wrong one is how an intake ends up delivered before it was built. */
 function actions(r){
   var b = [], id = r.id;
   function btn(label, fn, pri){
@@ -1420,18 +1461,17 @@ function actions(r){
   if (!r.assignedTo || r.assignedTo !== ME.email) btn('Assign to me', 'assignMe(\''+id+'\')');
   if (!D.answered(r)) btn('Reply &amp; acknowledge', 'acknowledge(\''+id+'\')', true);
 
-  if (r.status === 'acknowledged' || r.status === 'new')
-    btn('Start build', 'startBuild(\''+id+'\')', D.answered(r));
+  if (r.status === 'submitted') btn('Send quote', 'setStatus(\''+id+'\',\'quoted\')');
+  if (r.status === 'quoted')    btn('Mark accepted', 'setStatus(\''+id+'\',\'accepted\')');
+  if (r.status === 'accepted' || r.status === 'submitted' || r.status === 'quoted')
+    btn('Start build', 'startBuild(\''+id+'\')', r.status === 'accepted');
   if (r.projectId) btn('Open in editor', 'openEditor(\''+id+'\')');
-  if (r.status === 'in_progress') btn('Send to review', 'setStatus(\''+id+'\',\'review\')');
-  if (r.status === 'review' || r.status === 'in_progress')
-    btn('Deliver to client', 'deliver(\''+id+'\')', true);
-  if (r.status === 'delivered') btn('Mark completed', 'complete(\''+id+'\')', true);
-  if (r.status === 'completed' && !D.ms(r.paidAt)) btn('Mark commission paid', 'markPaid(\''+id+'\')');
+  if (r.status === 'in_production') btn('Deliver to client', 'deliver(\''+id+'\')', true);
+  if (r.status === D.payableStatus() && !D.ms(r.paidAt))
+    btn('Mark commission paid', 'markPaid(\''+id+'\')');
+  if (r.status === 'quoted') btn('Client declined', 'setStatus(\''+id+'\',\'declined\')');
 
   btn('Add note', 'addNote(\''+id+'\')');
-  if (r.status === 'on_hold') btn('Take off hold', 'setStatus(\''+id+'\',\'acknowledged\')');
-  else if (r.status !== 'completed' && r.status !== 'cancelled') btn('Put on hold', 'hold(\''+id+'\')');
   return b.join('');
 }
 
@@ -1444,17 +1484,27 @@ function closeDrawer(){
 /* ── Mutations ────────────────────────────────────────────────────────── */
 
 /* Every mutation goes through here so the local copy, the Firestore write and
-   the re-render stay in step — and so demo data never tries to hit the
-   network and fail confusingly. */
+   the re-render stay in step — and so demo data never hits the network. */
 function apply(id, fields, note, msg){
   var r = byId(id);
   if (!r) return Promise.resolve();
 
-  // optimistic local update, using a real Date where a serverTimestamp would go
   for (var k in fields){
     if (!fields.hasOwnProperty(k)) continue;
-    r[k] = (fields[k] && fields[k].isEqual && !(fields[k] instanceof Date))
-      ? new Date() : fields[k];
+    var val = (fields[k] && fields[k].isEqual && !(fields[k] instanceof Date)) ? new Date() : fields[k];
+    if (k.indexOf('.') > 0){
+      /* dot-path writes (quote.total) — mirror into _raw so the local view
+         matches what Firestore will hold */
+      var parts = k.split('.'), cur = r._raw;
+      for (var i = 0; i < parts.length - 1; i++){
+        if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+        cur = cur[parts[i]];
+      }
+      cur[parts[parts.length - 1]] = val;
+    } else {
+      r[k] = val;
+      r._raw[k] = val;
+    }
   }
   if (note) r.activity.push({ at:new Date().toISOString(), by:ME.email, byName:ME.name,
                               type:note.type, text:note.text });
@@ -1467,7 +1517,9 @@ function apply(id, fields, note, msg){
     if (msg) toast(msg);
   })['catch'](function(err){
     console.error('[ops] write failed', err);
-    toast('Couldn\u2019t save: ' + (err.message || 'permission denied'));
+    var perm = err && (err.code === 'permission-denied' || /permission/i.test(err.message||''));
+    toast(perm ? 'Blocked by Firestore rules — this action needs an admin role'
+               : 'Couldn\u2019t save: ' + (err.message || 'unknown error'));
     refresh();   // pull the truth back rather than leaving a lie on screen
   });
 }
@@ -1479,13 +1531,13 @@ function assignMe(id){
         { type:'note', text:'Assigned to ' + ME.name }, 'Assigned to you');
 }
 
-/* Acknowledging is the moment the response clock stops. It also opens a
-   pre-addressed reply — the stamp and the actual email should not drift
-   apart, and the easiest way to guarantee that is to do both at once. */
+/* Acknowledging stops the response clock and opens a pre-addressed reply.
+   Both at once, deliberately: the stamp and the actual email should never
+   drift apart. */
 function acknowledge(id){
   var r = byId(id);
   if (!r) return;
-  var fields = { firstResponseAt: ts(), status: (r.status === 'new') ? 'acknowledged' : r.status };
+  var fields = { firstResponseAt: ts() };
   if (!r.assignedTo){ fields.assignedTo = ME.email; fields.assignedName = ME.name; }
   apply(id, fields, { type:'note', text:'First reply sent' }, 'Response logged');
 
@@ -1493,9 +1545,8 @@ function acknowledge(id){
     var body = 'Hi ' + (r.contactName || 'there') + ',\n\n'
       + 'Thanks for sending over "' + r.projectName + '". We\u2019ve picked it up and '
       + (r.assignedName || ME.name) + ' is on it.\n\n'
-      + 'We\u2019ll come back to you with the requested deliverables. If anything about the '
-      + 'scope has changed, just reply here.\n\n'
-      + 'Best,\n' + ME.name + '\nClearSky Energy Solutions';
+      + 'We\u2019ll come back to you shortly with the scope and pricing. If anything has '
+      + 'changed, just reply here.\n\nBest,\n' + ME.name + '\nClearSky Energy Solutions';
     window.open('mailto:' + encodeURIComponent(r.contactEmail)
       + '?subject=' + encodeURIComponent('Re: ' + r.projectName)
       + '&body=' + encodeURIComponent(body), '_blank');
@@ -1510,15 +1561,14 @@ function startBuild(id){
   if (r.projectId){ openEditor(id); return; }
 
   if (STATE.demo || r._demo){
-    toast('Sample data — no editor project created');
-    apply(id, { status:'in_progress', startedAt: ts() }, null, 'Moved to in progress');
+    apply(id, { status:'in_production', startedAt: ts() }, null, 'Moved to in production');
     return;
   }
 
   toast('Creating the project…');
   D.createLinkedProject(r).then(function(ref){
     return apply(id, {
-      projectId: ref.id, status:'in_progress', startedAt: ts(),
+      projectId: ref.id, status:'in_production', startedAt: ts(),
       assignedTo: r.assignedTo || ME.email, assignedName: r.assignedName || ME.name
     }, { type:'note', text:'Editor project created' }, 'Project created').then(function(){
       openEditorById(ref.id, r.orgId);
@@ -1542,11 +1592,11 @@ function openEditorById(projectId, orgId){
 }
 
 function setStatus(id, to){
+  var r = byId(id) || {};
   var fields = { status: to };
-  if (to === 'in_progress' && !D.ms((byId(id)||{}).startedAt)) fields.startedAt = ts();
-  if (to === 'delivered'   && !D.ms((byId(id)||{}).deliveredAt)) fields.deliveredAt = ts();
-  if (to === 'completed'   && !D.ms((byId(id)||{}).completedAt)) fields.completedAt = ts();
-  if ((to !== 'new') && !D.answered(byId(id) || {})) fields.firstResponseAt = ts();
+  if (to === 'in_production' && !D.ms(r.startedAt))   fields.startedAt   = ts();
+  if (to === D.payableStatus() && !D.ms(r.deliveredAt)) fields.deliveredAt = ts();
+  if (to !== 'submitted' && !D.answered(r))            fields.firstResponseAt = ts();
   apply(id, fields, { type:'note', text:'Moved to ' + D.statusOf(to).label },
         'Moved to ' + D.statusOf(to).label);
 }
@@ -1555,33 +1605,22 @@ function deliver(id){
   var r = byId(id);
   if (!r) return;
   var note = prompt('What are you sending them? This goes on the record and into the email.',
-                    r.deliveryNote || 'Site map and one-line issued.');
+                    'Package issued.');
   if (note === null) return;
-  apply(id, { status:'delivered', deliveredAt: ts(), deliveryNote: note },
-        { type:'note', text:'Delivered: ' + note }, 'Marked delivered');
+  var fields = { status: D.payableStatus(), deliveredAt: ts() };
+  apply(id, fields, { type:'note', text:'Delivered: ' + note },
+        'Delivered · ' + D.fmtMoney(D.payout(r)) + ' commission earned');
 
   if (r.contactEmail){
     var body = 'Hi ' + (r.contactName || 'there') + ',\n\n'
       + '"' + r.projectName + '" is ready.\n\n' + note + '\n\n'
       + 'It\u2019s in your ClearSky-OMEGA portal now — sign in and it will be in your project '
-      + 'list. Let us know if you\u2019d like anything changed; otherwise a quick confirmation '
-      + 'closes it out.\n\nBest,\n' + ME.name + '\nClearSky Energy Solutions';
+      + 'list. Let us know if you\u2019d like anything changed.\n\nBest,\n'
+      + ME.name + '\nClearSky Energy Solutions';
     window.open('mailto:' + encodeURIComponent(r.contactEmail)
       + '?subject=' + encodeURIComponent(r.projectName + ' — ready for you')
       + '&body=' + encodeURIComponent(body), '_blank');
   }
-}
-
-function complete(id){
-  var r = byId(id);
-  if (!r) return;
-  if (!r.value){
-    if (!confirm('This request has no contract value, so it will pay nothing.\n\n'
-      + 'Set the value in Commercials first, or complete it anyway?')) return;
-  }
-  apply(id, { status:'completed', completedAt: ts() },
-        { type:'note', text:'Client signed off' },
-        'Completed · ' + D.fmtMoney(D.payout(r)) + ' commission earned');
 }
 
 function markPaid(id){
@@ -1589,27 +1628,23 @@ function markPaid(id){
   apply(id, { paidAt: ts() }, { type:'note', text:'Commission paid' }, 'Marked paid');
 }
 
-function hold(id){
-  var why = prompt('What\u2019s it blocked on?', '');
-  if (why === null) return;
-  apply(id, { status:'on_hold' },
-        { type:'note', text:'On hold' + (why ? ': ' + why : '') }, 'Put on hold');
-}
-
 function addNote(id){
-  var txt = prompt('Add a note to this request:', '');
+  var txt = prompt('Add a note to this intake:', '');
   if (!txt) return;
   apply(id, {}, { type:'note', text: txt }, 'Note added');
 }
 
+/* Writes quote.total by dot path rather than replacing the whole quote map —
+   otherwise anything else the intake tool stores in there (line items, tax,
+   who priced it) would be silently wiped by a save from this console. */
 function saveMoney(){
   var id = STATE.openId;
   if (!id) return;
   var v  = parseFloat(document.getElementById('dr-value').value) || 0;
   var rt = (parseFloat(document.getElementById('dr-rate').value) || 0) / 100;
   if (rt < 0 || rt > 1){ toast('Commission rate should be between 0 and 100%.'); return; }
-  apply(id, { value: v, commissionRate: rt }, null,
-        'Saved · ' + D.fmtMoney(v * rt) + ' on completion');
+  apply(id, { 'quote.total': v, commissionRate: rt }, null,
+        'Saved · ' + D.fmtMoney(v * rt) + ' on delivery');
 }
 </script>
 </body>

@@ -89,28 +89,80 @@ window.CLEARSKY_CONFIG = {
      ═════════════════════════════════════════════════════════════════════════ */
   ops: {
 
-    /* ── Response-time targets ─────────────────────────────────────────────
-       Measured from `submittedAt` to `firstResponseAt` — the moment a human
-       acknowledges the request, not the moment the work is done. This is the
-       number the console is built around, so be honest about what it means:
+    /* ── Where the queue lives ─────────────────────────────────────────────
+       The SAME collection tools.csebuilders.com/intake.html writes to and
+       intake-admin.html works from. There is exactly one queue.
 
-       These are WALL-CLOCK hours, not business hours. A standard request that
-       lands at 6pm Friday is already amber by Saturday lunchtime with nobody
-       at fault. If that reads as unfair once you have real volume, the fix is
-       a business-hours calendar in ops-data.js — not a longer target, which
-       would also slacken the weekday number.                                */
+       v1 of this console read its own `intake_requests` collection, which
+       meant a client could submit a job the console never saw. Don't point
+       this at a private collection again.                                   */
+    collection: 'intake_projects',
+
+    /* The real intake tool. This repo deliberately does NOT ship its own
+       form — a second intake form is how the queue got split the first
+       time. "New intake" opens this, with ?org= prefilled where known.      */
+    intakeUrl: 'https://tools.csebuilders.com/intake.html',
+
+    /* ── Tenants ───────────────────────────────────────────────────────────
+       NOT a list. Tenants are discovered, in this order:
+
+         1. the `omega_orgs` collection — the registry you already have
+         2. orgIds seen on actual intake records
+         3. the overrides below
+
+       So adding a customer costs nothing here: stand up their repo, let them
+       submit, and they appear. Redeploying this repo per customer was the
+       wrong shape for a list that keeps growing.
+
+       Use tenantNames ONLY to fix a display name — when omega_orgs has no
+       entry and the domain doesn't title-case into something readable.
+       "iqgen.energy" would otherwise render as "Iqgen".                     */
+    tenantNames: {
+      'iqgen.energy':        'iQGen Technologies',
+      'concordenergyusa.com':'Concord Energy',
+      'fenecon.com':         'FENECON',
+      'sunesol.com':         'SunESol',
+      'nextnrg.com':         'NextNRG',
+      'spatco.com':          'SPATCO'
+    },
+
+    /* ClearSky's own orgs. Excluded from Clients and from every client
+       metric — without this the console lists itself as a customer the
+       first time a staff member files a test intake. */
+    internalOrgs: ['clearsky-usa.com', 'csebuilders.com'],
+
+    /* ── What counts as work ───────────────────────────────────────────────
+       An intake carries purpose 'service' (Omega builds it, for a fee) or
+       'build' (the client opens their own project, no fee). Only 'service'
+       is our delivery queue. Set false to show both — the self-serve ones
+       will drag the response-time average down for work nobody owes a
+       reply on.                                                             */
+    serviceOnly: true,
+
+    /* ── Response-time targets ─────────────────────────────────────────────
+       Measured submittedAt → firstResponseAt: when a human replied, not
+       when the work finished.
+
+       intake_projects has no first-response field of its own, so the console
+       writes one the first time staff act on a record. TWO CONSEQUENCES:
+       existing intakes show "—" forever (the metric is not retroactive), and
+       records already past 'submitted' with no stamp read as answered but
+       unmeasured rather than as zero.
+
+       These are WALL-CLOCK hours, not business hours. A standard intake
+       landing 6pm Friday is amber by Saturday lunchtime with nobody at
+       fault. Once volume makes that unfair, add a business-hours calendar in
+       ops-data.js rather than lengthening the target — a longer target would
+       also slacken the weekday number that actually matters.                */
     sla: {
       critical: 2,    // hours
       rush:     8,
       standard: 24
     },
+    warnAt: 0.6,      // amber at 60% of target, red past it
 
-    /* Amber at this fraction of the target elapsed; red past the target. */
-    warnAt: 0.6,
-
-    /* ── Delivery target ───────────────────────────────────────────────────
-       Days from acknowledgement to delivery, when a request carries no
-       explicit dueDate of its own. Used for the pipeline's "due" column. */
+    /* Days from acknowledgement to delivery when an intake carries no
+       dueDate of its own. Drives the "Late" badge on the board. */
     deliveryDays: {
       critical: 3,
       rush:     7,
@@ -118,41 +170,24 @@ window.CLEARSKY_CONFIG = {
     },
 
     /* ── Payouts ───────────────────────────────────────────────────────────
-       Commission is earned on COMPLETED work only — completed meaning the
-       client has signed off, not that the file was sent. A request can carry
-       its own `commissionRate` (set on the intake form) which overrides this.
+       Commission = quote.total × rate, earned when status reaches
+       payableStatus.
 
-       `paidAt` on the request is what moves a payout from Pending to Paid.
-       Nothing in the console writes it automatically: payroll does, or you
-       do, from the Earnings view. That's deliberate — the console should not
-       be the system of record for money leaving the building.               */
+       'delivered' is intake_projects' terminal state, so that's the default.
+       The console does NOT invent a 'completed' status: intake-admin.html
+       reads these same records and would show an unknown state.
+
+       If you'd rather pay on client sign-off than on issue, add that status
+       to omega-intake.js AND intake-admin.html first, then point this at it.
+       Nothing else here changes.
+
+       There is no commission rate in intake_projects, so it comes from
+       defaultCommissionRate unless a record carries its own. paidAt moves a
+       payout from Pending to Paid and is never set automatically — payroll
+       does it, or you do, from the intake.                                  */
+    payableStatus: 'delivered',
     defaultCommissionRate: 0.05,
-    currency: 'USD',
-
-    /* ── Client-facing intake form ─────────────────────────────────────────
-       false (default): /intake.html requires a signed-in staff account, and
-       staff log requests on a client's behalf.
-
-       true: the form also accepts submissions from a shared link with no
-       sign-in, e.g. /intake.html?client=fenecon.com. That needs an explicit
-       Firestore rule allowing unauthenticated create on intake_requests —
-       see README § "Opening the intake form to clients". Do not flip this
-       flag without adding the rule; the form will just fail on submit.      */
-    publicIntake: false,
-
-    /* Shown on the intake form so a client knows who picks it up. */
-    intakeReplyTo: 'dev@clearsky-usa.com',
-
-    /* Tenants the console expects to see. Purely for the intake form's
-       client picker and for showing a tenant with zero requests in the CRM
-       instead of silently omitting them — the queue itself reads whatever
-       orgIds actually appear in Firestore, so a tenant missing from this
-       list still shows up the moment it submits anything. */
-    tenants: [
-      { orgId: 'fenecon.com',           name: 'FENECON' },
-      { orgId: 'iqgen.energy',          name: 'iQGen Technologies' },
-      { orgId: 'concordenergyusa.com',  name: 'Concord Energy' }
-    ]
+    currency: 'USD'
   }
 };
 

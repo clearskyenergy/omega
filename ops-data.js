@@ -1,55 +1,39 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
-   ClearSky-OMEGA · Ops Data Layer
+   ClearSky-OMEGA · Ops Data Layer  (v2)
    © 2026 ClearSky Energy Solutions LLC. Proprietary and Confidential.
 
    INTERNAL REPO ONLY. Not shared with tenant deployments.
 
-   One place for everything the ops console and the intake form both need to
-   agree on: what the statuses are, how a response time is measured, what a
-   payout is worth, and how a request document is shaped in Firestore.
+   ─────────────────────────────────────────────────────────────────────────────
+   WHAT CHANGED IN v2, AND WHY
+   ─────────────────────────────────────────────────────────────────────────────
+   v1 read a collection called `intake_requests` that this console invented for
+   itself. That was a mistake: the real intake already existed at
+   tools.csebuilders.com/intake.html and writes to `intake_projects`. Two
+   collections meant a client could submit a job the ops console never saw —
+   which is exactly what happened to the sunesol record.
 
-   Both pages import this. If they disagreed about any of it — say, one counted
-   `delivered` as payable and the other didn't — the queue and the earnings
-   view would quietly report different numbers from the same data, which is the
-   worst kind of bug to find.
+   v2 reads `intake_projects`. One queue, the same one intake-admin.html works.
+
+   v2 also stops being TOLD what the tenants are. They are DISCOVERED, in this
+   order of preference:
+
+     1. the `omega_orgs` collection — the registry that already exists
+     2. orgIds observed on actual intake records
+     3. `ops.tenantNames` in config.js — display-name overrides only
+
+   Adding a customer therefore costs nothing here. Stand up their repo, let
+   them submit, and they appear. No edit to this repo, no redeploy.
 
    ─────────────────────────────────────────────────────────────────────────────
-   COLLECTION: intake_requests
+   FIELD TOLERANCE
    ─────────────────────────────────────────────────────────────────────────────
-   {
-     orgId          'fenecon.com'        the CLIENT's org — who asked
-     clientName     'FENECON'
-     contactName    'Anna Bauer'
-     contactEmail   'anna@fenecon.com'
-     contactPhone   '+49 …'
-
-     projectName    'Munich DC — 4h BESS'
-     projectType    'bess' | 'solar+bess' | 'ev' | 'microgrid' | 'other'
-     address        '…'
-     capacityMw     12.5
-     durationHrs    4
-     scope          ['sitemap','oneline','proforma','proposal','permit']
-     notes          free text from the client
-
-     priority       'standard' | 'rush' | 'critical'
-     dueDate        'YYYY-MM-DD'  (optional — client's own deadline)
-     value          48000         contract value, USD
-     commissionRate 0.05          overrides ops.defaultCommissionRate
-
-     status         see STATUS below
-     assignedTo     'tom@clearsky-usa.com'
-     assignedName   'Thomas'
-     projectId      linked doc in `projects` — what the editor opens
-
-     submittedAt      Timestamp   set on create
-     firstResponseAt  Timestamp   set once, on first acknowledgement
-     startedAt        Timestamp
-     deliveredAt      Timestamp
-     completedAt      Timestamp   ← the one that makes commission payable
-     paidAt           Timestamp   ← set by payroll, never by this console
-
-     activity       [{ at, by, byName, type, text }]
-   }
+   The exact shape written by omega-intake.js hasn't been read directly, so
+   every field below resolves through pick() against several candidate paths.
+   Where nothing matches, the drawer shows the raw document rather than
+   rendering a blank — a wrong guess is then visible and correctable instead of
+   silently losing data. Tighten the candidate lists once the real field names
+   are confirmed; nothing else needs to change.
    ═══════════════════════════════════════════════════════════════════════════════ */
 (function (global) {
   'use strict';
@@ -57,26 +41,61 @@
   var HOUR = 3600000, DAY = 86400000;
 
   /* ── Status model ────────────────────────────────────────────────────────
-     `pipeline: true` means the status is a column on the board and a step in
-     the normal flow. on_hold and cancelled are real states but not steps, so
-     they sit outside it and are excluded from cycle-time averages. */
+     These are intake_projects' OWN statuses, taken from clientStatus() and
+     clientStatusMove() in the Firestore rules. The console deliberately does
+     not invent new ones: intake-admin.html reads the same records, and a
+     status it doesn't recognise would render as an unknown state there.
+
+     'draft' and 'saved' are pre-submission — the client is still typing. Not
+     work, so they stay out of the queue and out of every average.            */
   var STATUS = [
-    { key:'new',          label:'New',            short:'New',       color:'#0070F2', pipeline:true,
-      hint:'Submitted. Nobody has replied yet — the response clock is running.' },
-    { key:'acknowledged', label:'Acknowledged',   short:'Ack',       color:'#8B5CF6', pipeline:true,
-      hint:'A human has replied. Response time is locked in.' },
-    { key:'in_progress',  label:'In progress',    short:'Working',   color:'#00A9A4', pipeline:true,
+    { key:'draft',        label:'Draft',         short:'Draft',    color:'#9CA3AF', pipeline:false, pre:true,
+      hint:'The client is still filling this in. Not submitted.' },
+    { key:'saved',        label:'Saved',         short:'Saved',    color:'#9CA3AF', pipeline:false, pre:true,
+      hint:'Saved but not sent. Not in the queue yet.' },
+    { key:'submitted',    label:'Submitted',     short:'New',      color:'#0070F2', pipeline:true,
+      hint:'In. Nobody has replied yet — the response clock is running.' },
+    { key:'quoted',       label:'Quoted',        short:'Quoted',   color:'#8B5CF6', pipeline:true,
+      hint:'Priced and sent back. Waiting on the client to accept.' },
+    { key:'accepted',     label:'Accepted',      short:'Accepted', color:'#0EA5E9', pipeline:true,
+      hint:'Client accepted the fee. Ready to build.' },
+    { key:'in_production',label:'In production', short:'Building', color:'#00A9A4', pipeline:true,
       hint:'Being built. Linked to a project in the editor.' },
-    { key:'review',       label:'Internal review',short:'Review',    color:'#D97706', pipeline:true,
-      hint:'Work is done, checking it before the client sees it.' },
-    { key:'delivered',    label:'Delivered',      short:'Delivered', color:'#2563EB', pipeline:true,
-      hint:'Sent to the client. Waiting on their sign-off.' },
-    { key:'completed',    label:'Completed',      short:'Done',      color:'#16A34A', pipeline:true,
-      hint:'Client signed off. Commission is payable.' },
-    { key:'on_hold',      label:'On hold',        short:'Hold',      color:'#6B7280', pipeline:false,
-      hint:'Blocked on the client or on something outside the queue.' },
-    { key:'cancelled',    label:'Cancelled',      short:'Cancelled', color:'#9CA3AF', pipeline:false,
-      hint:'Withdrawn or dropped. No commission.' }
+    { key:'delivered',    label:'Delivered',     short:'Delivered',color:'#16A34A', pipeline:true,
+      hint:'Package issued. Commission is payable.' },
+    { key:'declined',     label:'Declined',      short:'Declined', color:'#DC2626', pipeline:false,
+      hint:'Client declined the quote. No commission.' }
+  ];
+
+  /* A 'build' intake is the client opening their own project, no fee. Real,
+     but not OUR work and it never pays, so it stays out of the delivery
+     queue by default. Set ops.serviceOnly:false to include it. */
+  var PURPOSE = {
+    service: { label:'Omega builds it',   billable:true  },
+    build:   { label:'Client self-serve', billable:false }
+  };
+
+  var TYPES = [
+    { key:'l2',         label:'L2 charging' },
+    { key:'dcfc',       label:'DC fast charging' },
+    { key:'bess',       label:'Standalone BESS' },
+    { key:'der',        label:'DER' },
+    { key:'solar',      label:'Solar' },
+    { key:'solar+bess', label:'Solar + storage' },
+    { key:'microgrid',  label:'Microgrid' },
+    { key:'compute',    label:'Compute / data center' },
+    { key:'other',      label:'Other' }
+  ];
+
+  /* Mirrors the deliverables ledger on the intake form. */
+  var SCOPE = [
+    { key:'plot',     label:'Project plot & site plan' },
+    { key:'sitemap',  label:'Site map' },
+    { key:'cost',     label:'Cost estimate & BOM' },
+    { key:'oneline',  label:'Load study & one-line' },
+    { key:'utility',  label:'Utility submission package' },
+    { key:'intercon', label:'Interconnection application' },
+    { key:'ahj',      label:'AHJ permit package' }
   ];
 
   var PRIORITY = [
@@ -85,29 +104,10 @@
     { key:'standard', label:'Standard', color:'#556B82' }
   ];
 
-  var SCOPE = [
-    { key:'sitemap',   label:'Site map / layout' },
-    { key:'oneline',   label:'One-line diagram' },
-    { key:'sizing',    label:'Battery sizing' },
-    { key:'proforma',  label:'Pro forma / financials' },
-    { key:'proposal',  label:'Sales proposal' },
-    { key:'permit',    label:'Permit-ready export' },
-    { key:'intercon',  label:'Interconnection screen' },
-    { key:'other',     label:'Something else (see notes)' }
-  ];
-
-  var TYPES = [
-    { key:'bess',       label:'Standalone BESS' },
-    { key:'solar+bess', label:'Solar + storage' },
-    { key:'ev',         label:'EV charging' },
-    { key:'microgrid',  label:'Microgrid' },
-    { key:'datacenter', label:'Data center' },
-    { key:'other',      label:'Other' }
-  ];
-
   function statusOf(key) {
     for (var i = 0; i < STATUS.length; i++) if (STATUS[i].key === key) return STATUS[i];
-    return STATUS[0];
+    return { key:key || 'unknown', label:key || 'Unknown', short:key || '?',
+             color:'#6B7280', pipeline:false, hint:'' };
   }
   function priorityOf(key) {
     for (var i = 0; i < PRIORITY.length; i++) if (PRIORITY[i].key === key) return PRIORITY[i];
@@ -115,33 +115,66 @@
   }
   function labelFor(list, key) {
     for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i].label;
-    return key || '—';
+    if (!key) return '—';
+    return String(key).replace(/[_-]+/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); });
   }
 
-  /* ── Config accessors ───────────────────────────────────────────────────── */
-
+  /* ── Config ─────────────────────────────────────────────────────────────── */
   function cfg()    { return (global.CLEARSKY_CONFIG || {}); }
   function ops()    { return cfg().ops || {}; }
   function slaCfg() { return ops().sla || { critical:2, rush:8, standard:24 }; }
 
-  /* Tenant display name: config list first, then whatever the request itself
-     recorded, then the bare domain. A tenant that onboarded after this repo
-     was last edited still renders with a real name from its own documents. */
-  function tenantName(orgId, requests) {
-    var list = ops().tenants || [], i;
-    for (i = 0; i < list.length; i++) if (list[i].orgId === orgId) return list[i].name;
-    if (requests) {
-      for (i = 0; i < requests.length; i++) {
-        if (requests[i].orgId === orgId && requests[i].clientName) return requests[i].clientName;
-      }
+  /* ClearSky's own orgs are not customers. Without this the console lists
+     itself as a client of itself the first time staff file a test intake. */
+  function internalOrgs() {
+    var list = ops().internalOrgs || ['clearsky-usa.com', 'csebuilders.com'];
+    var out = {};
+    for (var i = 0; i < list.length; i++) out[String(list[i]).toLowerCase()] = true;
+    return out;
+  }
+  function isInternalOrg(orgId) { return !!internalOrgs()[String(orgId || '').toLowerCase()]; }
+
+  /* ── Tolerant field access ───────────────────────────────────────────────
+     pick(doc, ['a.b','c']) walks each dotted path, returns the first
+     non-empty value. A guess that misses falls through; if all miss, the
+     drawer shows the raw document so the real name is visible. */
+  function dig(obj, path) {
+    var parts = String(path).split('.'), cur = obj;
+    for (var i = 0; i < parts.length; i++) {
+      if (cur == null || typeof cur !== 'object') return undefined;
+      cur = cur[parts[i]];
     }
-    return orgId || 'Unknown';
+    return cur;
+  }
+  function empty(v) { return v == null || v === '' || (Array.isArray(v) && !v.length); }
+  function pick(doc, paths, dflt) {
+    for (var i = 0; i < paths.length; i++) {
+      var v = dig(doc, paths[i]);
+      if (!empty(v)) return v;
+    }
+    return dflt;
   }
 
-  /* ── Time ────────────────────────────────────────────────────────────────
-     Firestore hands back Timestamps; the sample data and anything written
-     offline hands back Date or ISO strings. Everything downstream wants a
-     number, so funnel all of it through here. */
+  /* Scope may arrive as an array of keys, an array of objects, or a map of
+     key → boolean. Normalise all three to an array of keys. */
+  function pickScope(doc) {
+    var v = pick(doc, ['scope','scopes','deliverables','ledger','packages'], null);
+    if (!v) return [];
+    if (Array.isArray(v)) {
+      return v.map(function (x) {
+        if (typeof x === 'string') return x;
+        return (x && (x.key || x.id || x.name)) || '';
+      }).filter(Boolean);
+    }
+    if (typeof v === 'object') {
+      var out = [];
+      for (var k in v) if (v.hasOwnProperty(k) && v[k]) out.push(k);
+      return out;
+    }
+    return [];
+  }
+
+  /* ── Time ───────────────────────────────────────────────────────────────── */
   function ms(v) {
     if (!v) return 0;
     if (typeof v === 'number') return v;
@@ -151,7 +184,6 @@
     if (v.seconds) return v.seconds * 1000;
     return 0;
   }
-
   function fmtDate(v) {
     var t = ms(v);
     if (!t) return '—';
@@ -159,27 +191,17 @@
     var d = new Date(t);
     return m[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
   }
-
   function fmtDateTime(v) {
     var t = ms(v);
     if (!t) return '—';
-    var d = new Date(t);
-    return fmtDate(t) + ' · ' + d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+    return fmtDate(t) + ' · ' + new Date(t).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
   }
 
-  /* Compact duration. Sub-hour precision matters here — the difference
-     between a 12-minute and a 50-minute reply is the whole point of the
-     dashboard, and "1h" for both would hide it. */
+  /* Round FIRST, then pick the unit — otherwise 59.98 minutes prints as
+     "60m" and 23.99 hours as "24h", both of which make the reader convert. */
   function fmtDur(msVal) {
     if (msVal == null || isNaN(msVal)) return '—';
-    var neg = msVal < 0;
-    var v = Math.abs(msVal);
-    var out;
-
-    /* Round FIRST, then pick the unit. Doing it the other way round produces
-       "60m" for 59.98 minutes and "24h" for 23.99 hours — both technically
-       true and both wrong on a dashboard, because they read as a unit the
-       reader has to convert in their head. */
+    var neg = msVal < 0, v = Math.abs(msVal), out;
     if (v < 60000) {
       out = Math.max(1, Math.round(v / 1000)) + 's';
       if (out === '60s') out = '1m';
@@ -197,7 +219,6 @@
     }
     return neg ? '−' + out : out;
   }
-
   function fmtAgo(v) {
     var t = ms(v);
     if (!t) return '—';
@@ -205,10 +226,8 @@
     if (diff < 45000) return 'just now';
     return (diff >= 0) ? fmtDur(diff) + ' ago' : 'in ' + fmtDur(-diff);
   }
-
   function fmtMoney(n, opts) {
-    var v = Number(n) || 0;
-    var compact = opts && opts.compact;
+    var v = Number(n) || 0, compact = opts && opts.compact;
     try {
       return v.toLocaleString('en-US', {
         style:'currency', currency: ops().currency || 'USD',
@@ -218,77 +237,70 @@
     } catch (e) { return '$' + Math.round(v).toLocaleString(); }
   }
 
-  /* ── SLA / response time ─────────────────────────────────────────────────
-     target(req)      how long this request had, in ms
-     responseMs(req)  how long it actually took, or null if still waiting
-     clock(req)       everything the UI needs to draw the countdown
+  /* ── Response time ───────────────────────────────────────────────────────
+     intake_projects has no first-response field of its own — it tracks status
+     transitions, not when a human replied. The console writes
+     `firstResponseAt` itself the first time staff act on a record.
 
-     Note that `elapsed` keeps counting after the target is blown, so a badly
-     missed request keeps getting worse on screen instead of parking at 100%.
-     That's intentional: a 3-hour miss and a 3-day miss should not look alike. */
+     TWO CONSEQUENCES, both worth knowing before reading the dashboard:
+
+       • Records submitted before this shipped have no stamp and show "—"
+         forever. The metric starts now; it is not retroactive.
+       • A record already past 'submitted' with no stamp counts as ANSWERED
+         (we clearly replied — we priced it) but its response time is
+         UNKNOWN, not zero. Counting it as zero would flatter the average
+         with work nobody measured.                                           */
   function targetMs(req) {
     var hours = slaCfg()[req.priority] || slaCfg().standard || 24;
     return hours * HOUR;
   }
-
   function responseMs(req) {
     var s = ms(req.submittedAt), f = ms(req.firstResponseAt);
     if (!s || !f) return null;
     return Math.max(0, f - s);
   }
-
-  /* Has anyone replied yet? Explicit stamp wins; anything past `new` counts
-     as replied even on an older document written before the stamp existed. */
   function answered(req) {
     if (ms(req.firstResponseAt)) return true;
-    return req.status && req.status !== 'new';
+    return req.status && req.status !== 'submitted' && !statusOf(req.status).pre;
   }
-
   function clock(req, now) {
     now = now || Date.now();
-    var t = targetMs(req);
-    var sub = ms(req.submittedAt);
-    var done = responseMs(req);
+    var t = targetMs(req), sub = ms(req.submittedAt), done = responseMs(req);
     var elapsed = (done != null) ? done : (sub ? Math.max(0, now - sub) : 0);
     var frac = t ? (elapsed / t) : 0;
     var warn = (ops().warnAt != null) ? ops().warnAt : 0.6;
-
-    var state = 'ok';
-    if (frac >= 1) state = 'breach';
-    else if (frac >= warn) state = 'warn';
-
+    var state = frac >= 1 ? 'breach' : frac >= warn ? 'warn' : 'ok';
     return {
-      target:    t,
-      elapsed:   elapsed,
-      remaining: t - elapsed,        // negative once blown
-      frac:      frac,
-      pct:       Math.min(100, Math.round(frac * 100)),
-      state:     state,
-      settled:   done != null,       // true = historical, stop ticking it
-      answered:  answered(req)
+      target:t, elapsed:elapsed, remaining:t - elapsed, frac:frac,
+      pct: Math.min(100, Math.round(frac * 100)),
+      state:state, settled: done != null, answered: answered(req),
+      unmeasured: answered(req) && done == null
     };
   }
 
-  /* ── Payouts ─────────────────────────────────────────────────────────────
-     Earned on completion and nothing earlier. Delivered-but-unsigned is the
-     tempting one to count and the wrong one: the client can still come back
-     with changes, and a rep watching a number that later drops is worse than
-     one watching a number that only ever goes up. */
+  /* ── Money ───────────────────────────────────────────────────────────────
+     The fee lives in the `quote` map, written by an administrator. The rep's
+     cut isn't in intake_projects at all, so it comes from config unless the
+     record carries an explicit override.
+
+     Commission is earned at `delivered`, this pipeline's terminal state. If
+     you later add a client sign-off step, point ops.payableStatus at it and
+     nothing else here changes.                                               */
+  function value(req) {
+    return Number(pick(req._raw || {},
+      ['quote.total','quote.amount','quote.fee','quote.price','value','price'], 0)) || 0;
+  }
   function rate(req) {
     var r = req.commissionRate;
     if (r == null || isNaN(r)) r = ops().defaultCommissionRate;
     if (r == null || isNaN(r)) r = 0.05;
     return Number(r);
   }
-
-  function payout(req) { return (Number(req.value) || 0) * rate(req); }
-  function isEarned(req) { return req.status === 'completed' && !!ms(req.completedAt); }
+  function payableStatus() { return ops().payableStatus || 'delivered'; }
+  function payout(req) { return value(req) * rate(req); }
+  function isEarned(req) { return req.status === payableStatus(); }
   function isPaid(req)   { return isEarned(req) && !!ms(req.paidAt); }
 
-  /* ── Delivery due date ───────────────────────────────────────────────────
-     The client's own dueDate wins when they gave one. Otherwise derive from
-     the acknowledgement, not from submission — the clock on doing the work
-     shouldn't start before anyone has picked it up. */
   function dueMs(req) {
     if (req.dueDate) { var p = Date.parse(String(req.dueDate) + 'T23:59:59'); if (!isNaN(p)) return p; }
     var base = ms(req.firstResponseAt) || ms(req.submittedAt);
@@ -297,76 +309,80 @@
     if (d == null) d = (ops().deliveryDays || {}).standard || 14;
     return base + d * DAY;
   }
-
-  /* Cycle time: acknowledgement → delivery. What a client experiences as
-     "how long did it take", once someone was actually on it. */
   function cycleMs(req) {
     var a = ms(req.firstResponseAt) || ms(req.submittedAt);
-    var d = ms(req.deliveredAt) || ms(req.completedAt);
+    var d = ms(req.deliveredAt);
     if (!a || !d) return null;
     return Math.max(0, d - a);
   }
 
-  /* ── Normalisation ───────────────────────────────────────────────────────
-     Give every consumer the same shape regardless of how old the document is
-     or which page wrote it. Defaults here rather than at each call site. */
+  /* ── Normalisation ──────────────────────────────────────────────────────
+     Every candidate list below is a GUESS at omega-intake.js's shape. `_raw`
+     keeps the original document so the drawer can show whatever didn't map. */
   function normalize(id, d) {
     d = d || {};
+    var purpose = pick(d, ['purpose','mode','path'], 'service');
     return {
-      id:             id,
-      orgId:          d.orgId || '',
-      clientName:     d.clientName || '',
-      contactName:    d.contactName || '',
-      contactEmail:   d.contactEmail || '',
-      contactPhone:   d.contactPhone || '',
-      projectName:    d.projectName || 'Untitled request',
-      projectType:    d.projectType || 'bess',
-      address:        d.address || '',
-      capacityMw:     d.capacityMw != null ? d.capacityMw : '',
-      durationHrs:    d.durationHrs != null ? d.durationHrs : '',
-      scope:          Array.isArray(d.scope) ? d.scope : [],
-      notes:          d.notes || '',
-      priority:       d.priority || 'standard',
-      dueDate:        d.dueDate || '',
-      value:          Number(d.value) || 0,
+      id:            id,
+      orgId:         String(pick(d, ['orgId','org','tenant'], '')).toLowerCase(),
+      purpose:       purpose,
+      billable:      (PURPOSE[purpose] || PURPOSE.service).billable,
+
+      clientName:    pick(d, ['clientName','customer.company','customer.name','company','customer.org'], ''),
+      contactName:   pick(d, ['contactName','customer.contact','customer.primaryContact',
+                              'customer.contactName','contact.name','primaryContact'], ''),
+      contactEmail:  pick(d, ['contactEmail','customer.email','contact.email','email','createdBy.email'], ''),
+      contactPhone:  pick(d, ['contactPhone','customer.phone','contact.phone','phone'], ''),
+      contactRole:   pick(d, ['customer.role','contact.role','role'], ''),
+
+      projectName:   pick(d, ['projectName','name','project.name','site.name','title','customer.company'],
+                          'Untitled intake'),
+      projectType:   String(pick(d, ['projectType','type','site.type','scopeType','assetType'], '')).toLowerCase(),
+      address:       pick(d, ['address','site.address','siteAddress','site.city',
+                              'customer.billing.street','location'], ''),
+      capacityMw:    pick(d, ['capacityMw','powerMw','site.powerMw','power.mw'], ''),
+      durationHrs:   pick(d, ['durationHrs','durationHours','site.durationHrs'], ''),
+      scope:         pickScope(d),
+      notes:         pick(d, ['notes','note','customer.notes','site.notes'], ''),
+
+      priority:      pick(d, ['priority','admin.priority','urgency'], 'standard'),
+      dueDate:       pick(d, ['dueDate','admin.dueDate','deadline'], ''),
       commissionRate: d.commissionRate,
-      status:         d.status || 'new',
-      assignedTo:     (d.assignedTo || '').toLowerCase(),
-      assignedName:   d.assignedName || '',
-      projectId:      d.projectId || '',
-      deliveryNote:   d.deliveryNote || '',
-      submittedAt:    d.submittedAt || null,
-      firstResponseAt:d.firstResponseAt || null,
-      startedAt:      d.startedAt || null,
-      deliveredAt:    d.deliveredAt || null,
-      completedAt:    d.completedAt || null,
-      paidAt:         d.paidAt || null,
-      activity:       Array.isArray(d.activity) ? d.activity.slice() : [],
-      _demo:          !!d._demo
+
+      status:        pick(d, ['status'], 'submitted'),
+      assignedTo:    String(pick(d, ['assignedTo','admin.assignee','admin.assignedTo'], '')).toLowerCase(),
+      assignedName:  pick(d, ['assignedName','admin.assigneeName'], ''),
+      projectId:     pick(d, ['projectId','admin.projectId','linkedProjectId'], ''),
+      internalNotes: pick(d, ['admin.internalNotes','internalNotes'], ''),
+
+      submittedAt:     pick(d, ['submittedAt','submitted.at','createdAt','updatedAt'], null),
+      firstResponseAt: pick(d, ['firstResponseAt','admin.firstResponseAt'], null),
+      startedAt:       pick(d, ['startedAt','admin.startedAt'], null),
+      deliveredAt:     pick(d, ['deliveredAt','admin.deliveredAt'], null),
+      paidAt:          pick(d, ['paidAt','admin.paidAt'], null),
+
+      activity:      Array.isArray(d.activity) ? d.activity.slice() : [],
+      _raw:          d,
+      _demo:         !!d._demo
     };
   }
 
   /* ── Firestore ──────────────────────────────────────────────────────────── */
-
-  var _db = null, _me = { email:'', name:'' };
+  var _db = null, _me = { email:'', name:'' }, _orgs = [];
 
   function init(db, me) {
     _db = db || null;
-    if (me) _me = { email: (me.email||'').toLowerCase(), name: me.name || '' };
+    if (me) _me = { email:(me.email || '').toLowerCase(), name: me.name || '' };
   }
-
   function stamp() {
     try { return firebase.firestore.FieldValue.serverTimestamp(); }
     catch (e) { return new Date(); }
   }
+  function collectionName() { return ops().collection || 'intake_projects'; }
 
-  /* Read the whole queue. No composite index needed — one where-less get and
-     a client-side sort, same approach projects.html uses. If this ever grows
-     past a few thousand documents, add a `where('status','!=','completed')`
-     for the board views and page the archive separately. */
   function loadRequests() {
     if (!_db) return Promise.reject(new Error('No database connection.'));
-    return _db.collection('intake_requests').get().then(function (snap) {
+    return _db.collection(collectionName()).get().then(function (snap) {
       var out = [];
       snap.forEach(function (doc) { out.push(normalize(doc.id, doc.data())); });
       out.sort(function (a, b) { return ms(b.submittedAt) - ms(a.submittedAt); });
@@ -374,18 +390,55 @@
     });
   }
 
-  /* Activity entries live in an array, and Firestore refuses a
-     serverTimestamp() inside array elements — so these carry a client clock.
-     Fine for a readable log; never use activity[].at for SLA math. The
-     top-level *At fields are server-stamped and are what the numbers use. */
+  /* The tenant registry that already exists. Optional: if it's empty or
+     unreadable, discovery falls back to orgIds seen on records, so the
+     console degrades to "whoever has actually submitted" rather than to
+     nothing. */
+  function loadOrgs() {
+    if (!_db) return Promise.resolve([]);
+    return _db.collection('omega_orgs').get().then(function (snap) {
+      var out = [];
+      snap.forEach(function (doc) {
+        var d = doc.data() || {};
+        out.push({
+          orgId:  String(d.orgId || doc.id).toLowerCase(),
+          name:   d.name || d.clientName || d.displayName || '',
+          active: d.active !== false
+        });
+      });
+      _orgs = out;
+      return out;
+    })['catch'](function (err) {
+      console.warn('[ops] omega_orgs unreadable — falling back to record discovery:', err.message);
+      _orgs = [];
+      return [];
+    });
+  }
+  function orgs() { return _orgs.slice(); }
+
+  /* Display name, best available: registry → config override → the record's
+     own clientName → title-cased domain. A tenant onboarded five minutes ago
+     still reads as something a human recognises. */
+  function tenantName(orgId, requests) {
+    if (!orgId) return 'Unknown';
+    var key = String(orgId).toLowerCase(), i;
+    for (i = 0; i < _orgs.length; i++) if (_orgs[i].orgId === key && _orgs[i].name) return _orgs[i].name;
+    var over = ops().tenantNames || {};
+    if (over[key]) return over[key];
+    if (requests) {
+      for (i = 0; i < requests.length; i++) {
+        if (requests[i].orgId === key && requests[i].clientName) return requests[i].clientName;
+      }
+    }
+    var stem = key.replace(/\.[a-z.]+$/i, '');
+    return stem.split(/[-_.]/).map(function (p) {
+      return p ? p.charAt(0).toUpperCase() + p.slice(1) : '';
+    }).join(' ') || key;
+  }
+
   function entry(type, text) {
-    return {
-      at:     new Date().toISOString(),
-      by:     _me.email || 'system',
-      byName: _me.name || _me.email || 'System',
-      type:   type,
-      text:   text || ''
-    };
+    return { at:new Date().toISOString(), by:_me.email || 'system',
+             byName:_me.name || _me.email || 'System', type:type, text:text || '' };
   }
 
   function patch(id, fields, note) {
@@ -395,45 +448,29 @@
     body.updatedAt = stamp();
     if (note) {
       try { body.activity = firebase.firestore.FieldValue.arrayUnion(entry(note.type, note.text)); }
-      catch (e) { /* arrayUnion unavailable: skip the log rather than fail the write */ }
+      catch (e) { /* arrayUnion unavailable — skip the log rather than fail the write */ }
     }
-    return _db.collection('intake_requests').doc(id).update(body);
+    return _db.collection(collectionName()).doc(id).update(body);
   }
 
-  function create(doc) {
-    if (!_db) return Promise.reject(new Error('No database connection.'));
-    var body = normalize(null, doc);
-    delete body.id;
-    delete body._demo;
-    body.status      = 'new';
-    body.submittedAt = stamp();
-    body.updatedAt   = stamp();
-    body.activity    = [entry('created', 'Request submitted')];
-    return _db.collection('intake_requests').add(body);
-  }
-
-  /* Create the editor-side project for a request and link the two.
-
-     The project is stamped with the CLIENT's orgId, not ClearSky's. That is
-     the whole point: when the work is finished the client already sees it in
-     their own portal under their own tenant, with no export/import step. It
-     also means Firestore rules must let staff write outside their own org —
-     see README § "Firestore rules". */
+  /* Create the editor project for an intake and link the two. Stamped with
+     the CLIENT's orgId so the finished work is already in their portal. */
   function createLinkedProject(req) {
     if (!_db) return Promise.reject(new Error('No database connection.'));
     var user = null;
     try { user = firebase.auth().currentUser; } catch (e) {}
+    var t = String(req.projectType || '').toLowerCase();
     return _db.collection('projects').add({
       uid:        user ? user.uid : null,
-      orgId:      req.orgId,                       // ← the client's tenant
-      ownerEmail: (_me.email || '').toLowerCase(), // the staff member building it
+      orgId:      req.orgId,
+      ownerEmail: (_me.email || '').toLowerCase(),
       ownerName:  _me.name || _me.email || '',
       name:       req.projectName || 'Untitled',
       address:    req.address || '',
-      type:       (req.projectType === 'ev') ? 'EV' : 'BESS',
+      type:       (t === 'l2' || t === 'dcfc' || t === 'ev') ? 'EV' : 'BESS',
       client:     req.clientName || '',
       stage:      'candidate',
-      intakeId:   req.id,                          // back-reference to the request
+      intakeId:   req.id,
       createdAt:  stamp(),
       updatedAt:  stamp(),
       elements: [], conduits: [], bessList: [], annotations: []
@@ -441,43 +478,53 @@
   }
 
   /* ── Roll-ups ────────────────────────────────────────────────────────────
-     Averages skip cancelled work and anything still unanswered, so a request
-     nobody has touched can't flatter the average by contributing nothing. */
+     Drafts and declined quotes stay out of every average. A draft nobody
+     sent is not a response time we missed. */
+  function inQueue(r) {
+    if (statusOf(r.status).pre) return false;
+    if (r.status === 'declined') return false;
+    if (ops().serviceOnly !== false && !r.billable) return false;
+    return true;
+  }
+
   function summarize(reqs, opts) {
     opts = opts || {};
     var now = Date.now();
     var monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
     var weekAgo = now - 7 * DAY;
+    var pay = payableStatus();
 
     var s = {
-      total:0, open:0, awaitingResponse:0, breached:0, working:0, review:0,
-      delivered:0, completed:0, completedThisMonth:0, onHold:0,
+      total:0, open:0, awaitingResponse:0, breached:0, quoted:0, accepted:0,
+      working:0, delivered:0, declined:0, drafts:0, selfServe:0,
       valueOpen:0, valueCompleted:0,
       earnedThisMonth:0, earnedPending:0, earnedPaid:0, earnedAll:0,
-      respAvg:null, respAvg7d:null, respBest:null, respWorst:null,
-      cycleAvg:null, slaHitRate:null,
-      oldestUnanswered:null
+      completed:0, completedThisMonth:0,
+      respAvg:null, respAvg7d:null, unmeasured:0,
+      cycleAvg:null, slaHitRate:null, oldestUnanswered:null
     };
-
     var respAll = [], resp7 = [], cyc = [], slaOk = 0, slaCount = 0;
 
     for (var i = 0; i < reqs.length; i++) {
       var r = reqs[i];
       if (opts.mine && r.assignedTo !== opts.mine) continue;
-      if (r.status === 'cancelled') { s.total++; continue; }
+      if (statusOf(r.status).pre) { s.drafts++; continue; }
+      if (!r.billable) { s.selfServe++; continue; }
+      if (r.status === 'declined') { s.declined++; continue; }
+
       s.total++;
+      var isDone = (r.status === pay);
+      if (!isDone) { s.open++; s.valueOpen += value(r); }
 
-      var isOpen = (r.status !== 'completed');
-      if (isOpen) { s.open++; s.valueOpen += (Number(r.value) || 0); }
-
-      if (r.status === 'new')          s.awaitingResponse++;
-      if (r.status === 'in_progress')  s.working++;
-      if (r.status === 'review')       s.review++;
-      if (r.status === 'delivered')    s.delivered++;
-      if (r.status === 'on_hold')      s.onHold++;
+      if (r.status === 'submitted')     s.awaitingResponse++;
+      if (r.status === 'quoted')        s.quoted++;
+      if (r.status === 'accepted')      s.accepted++;
+      if (r.status === 'in_production') s.working++;
+      if (r.status === 'delivered')     s.delivered++;
 
       var c = clock(r, now);
       if (c.state === 'breach' && !c.answered) s.breached++;
+      if (c.unmeasured) s.unmeasured++;
 
       if (!c.answered && ms(r.submittedAt)) {
         if (!s.oldestUnanswered || ms(r.submittedAt) < ms(s.oldestUnanswered.submittedAt)) {
@@ -489,25 +536,20 @@
       if (rm != null) {
         respAll.push(rm);
         if (ms(r.firstResponseAt) >= weekAgo) resp7.push(rm);
-        if (s.respBest  == null || rm < s.respBest)  s.respBest  = rm;
-        if (s.respWorst == null || rm > s.respWorst) s.respWorst = rm;
         slaCount++;
         if (rm <= targetMs(r)) slaOk++;
       }
-
       var cm = cycleMs(r);
       if (cm != null) cyc.push(cm);
 
-      if (r.status === 'completed') {
+      if (isDone) {
         s.completed++;
-        s.valueCompleted += (Number(r.value) || 0);
+        s.valueCompleted += value(r);
         var p = payout(r);
         s.earnedAll += p;
         if (isPaid(r)) s.earnedPaid += p; else s.earnedPending += p;
-        if (ms(r.completedAt) >= monthStart.getTime()) {
-          s.completedThisMonth++;
-          s.earnedThisMonth += p;
-        }
+        var when = ms(r.deliveredAt) || ms(r.submittedAt);
+        if (when >= monthStart.getTime()) { s.completedThisMonth++; s.earnedThisMonth += p; }
       }
     }
 
@@ -516,58 +558,59 @@
       var t = 0; for (var i = 0; i < a.length; i++) t += a[i];
       return t / a.length;
     }
-    s.respAvg    = avg(respAll);
-    s.respAvg7d  = avg(resp7);
-    s.cycleAvg   = avg(cyc);
+    s.respAvg = avg(respAll); s.respAvg7d = avg(resp7); s.cycleAvg = avg(cyc);
     s.slaHitRate = slaCount ? (slaOk / slaCount) : null;
-    s.respCount  = respAll.length;
-
+    s.respCount = respAll.length;
     return s;
   }
 
-  /* Per-tenant roll-up for the CRM view. Tenants named in config appear even
-     with zero requests, so a newly onboarded client reads as "nothing yet"
-     rather than being invisible. */
+  /* Every tenant the console knows about, from all three sources, minus
+     ClearSky's own orgs. */
   function byTenant(reqs) {
-    var map = {}, i, r;
+    var map = {}, i, r, key;
 
-    var listed = ops().tenants || [];
-    for (i = 0; i < listed.length; i++) {
-      map[listed[i].orgId] = { orgId: listed[i].orgId, name: listed[i].name, requests: [] };
+    for (i = 0; i < _orgs.length; i++) {
+      key = _orgs[i].orgId;
+      if (!key || isInternalOrg(key) || _orgs[i].active === false) continue;
+      map[key] = { orgId:key, name:_orgs[i].name || tenantName(key), requests:[], source:'registry' };
+    }
+    var over = ops().tenantNames || {};
+    for (key in over) {
+      if (!over.hasOwnProperty(key) || isInternalOrg(key)) continue;
+      if (!map[key]) map[key] = { orgId:key, name:over[key], requests:[], source:'config' };
     }
     for (i = 0; i < reqs.length; i++) {
-      r = reqs[i];
-      if (!r.orgId) continue;
-      if (!map[r.orgId]) map[r.orgId] = { orgId: r.orgId, name: r.clientName || r.orgId, requests: [] };
-      if (!map[r.orgId].name && r.clientName) map[r.orgId].name = r.clientName;
-      map[r.orgId].requests.push(r);
+      r = reqs[i]; key = r.orgId;
+      if (!key || isInternalOrg(key)) continue;
+      if (!map[key]) map[key] = { orgId:key, name:tenantName(key, reqs), requests:[], source:'observed' };
+      map[key].requests.push(r);
     }
 
     var out = [];
-    for (var k in map) {
-      if (!map.hasOwnProperty(k)) continue;
-      var t = map[k];
+    for (key in map) {
+      if (!map.hasOwnProperty(key)) continue;
+      var t = map[key];
       t.stats = summarize(t.requests);
       t.lastActivity = 0;
       for (i = 0; i < t.requests.length; i++) {
-        var when = Math.max(ms(t.requests[i].submittedAt), ms(t.requests[i].completedAt),
-                            ms(t.requests[i].deliveredAt));
-        if (when > t.lastActivity) t.lastActivity = when;
+        var w = Math.max(ms(t.requests[i].submittedAt), ms(t.requests[i].deliveredAt));
+        if (w > t.lastActivity) t.lastActivity = w;
       }
       out.push(t);
     }
-    out.sort(function (a, b) { return b.lastActivity - a.lastActivity; });
+    out.sort(function (a, b) {
+      if (b.lastActivity !== a.lastActivity) return b.lastActivity - a.lastActivity;
+      return String(a.name).localeCompare(String(b.name));
+    });
     return out;
   }
 
-  /* Per-person roll-up for Earnings. */
   function byStaff(reqs) {
     var map = {};
     for (var i = 0; i < reqs.length; i++) {
-      var r = reqs[i];
-      var who = r.assignedTo || '';
+      var r = reqs[i], who = r.assignedTo;
       if (!who) continue;
-      if (!map[who]) map[who] = { email: who, name: r.assignedName || who.split('@')[0], requests: [] };
+      if (!map[who]) map[who] = { email:who, name:r.assignedName || who.split('@')[0], requests:[] };
       map[who].requests.push(r);
     }
     var out = [];
@@ -581,81 +624,68 @@
   }
 
   /* ── Sample data ─────────────────────────────────────────────────────────
-     In-memory only. Nothing here is ever written to Firestore, and every
-     record carries _demo so the UI can keep saying so. It exists so the
-     console can be demoed and the layout checked before the first real
-     submission lands — an empty ops board tells you nothing about whether
-     the SLA colours or the payout maths are right. */
+     In-memory only, never written, every record flagged _demo. Shaped like a
+     real intake_projects document (nested `customer`, `quote.total`) so it
+     also exercises the field-tolerance paths. */
   function sample() {
     var now = Date.now();
-    function t(hoursAgo) { return new Date(now - hoursAgo * HOUR).toISOString(); }
-
-    /* "Completed this month" is one of the headline numbers, and a demo that
-       always shows zero for it teaches you nothing about whether it works.
-       Pin one completion inside the current month whatever today's date is —
-       on the 1st, a plain "60 hours ago" would land in the previous month. */
+    function t(h) { return new Date(now - h * HOUR).toISOString(); }
     var monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
     var recentDone = Math.max(now - 60 * HOUR, monthStart.getTime() + 6 * HOUR);
     if (recentDone > now) recentDone = now - HOUR;
-    function fromDone(hoursBefore) { return new Date(recentDone - hoursBefore * HOUR).toISOString(); }
-    var rows = [
-      { orgId:'fenecon.com', clientName:'FENECON', contactName:'Anna Bauer',
-        contactEmail:'a.bauer@fenecon.com', projectName:'Munich DC — 4h BESS',
-        projectType:'bess', address:'Garching bei München, DE', capacityMw:12.5, durationHrs:4,
-        scope:['sitemap','oneline','proforma'], priority:'critical', value:64000,
-        status:'new', submittedAt:t(3.4), notes:'Utility wants the one-line before their Thursday review.' },
+    function fd(h) { return new Date(recentDone - h * HOUR).toISOString(); }
 
-      { orgId:'iqgen.energy', clientName:'iQGen Technologies', contactName:'Priya Raman',
-        contactEmail:'priya@iqgen.energy', projectName:'Odessa TX — solar + storage',
-        projectType:'solar+bess', address:'Odessa, TX', capacityMw:40, durationHrs:2,
-        scope:['sitemap','proforma','proposal'], priority:'rush', value:88000,
-        status:'in_progress', assignedTo:'tom@clearsky-usa.com', assignedName:'Thomas',
+    var rows = [
+      { orgId:'fenecon.com', purpose:'service', status:'submitted', priority:'critical',
+        customer:{ company:'FENECON', contact:'Anna Bauer', email:'a.bauer@fenecon.com' },
+        projectName:'Munich DC — 4h BESS', type:'bess', site:{ address:'Garching, DE' },
+        scope:['plot','oneline','cost'], submittedAt:t(3.4),
+        notes:'Utility wants the one-line before their Thursday review.' },
+
+      { orgId:'sunesol.com', purpose:'service', status:'submitted', priority:'standard',
+        customer:{ company:'SunESol', contact:'Dana Ruiz', email:'dana@sunesol.com' },
+        projectName:'Fresno depot — DCFC', type:'dcfc', site:{ address:'Fresno, CA' },
+        scope:['plot','sitemap','utility'], submittedAt:t(26) },
+
+      { orgId:'iqgen.energy', purpose:'service', status:'in_production', priority:'rush',
+        customer:{ company:'iQGen Technologies', contact:'Priya Raman', email:'priya@iqgen.energy' },
+        projectName:'Odessa TX — solar + storage', type:'solar+bess', site:{ address:'Odessa, TX' },
+        scope:['plot','cost','oneline'], quote:{ total:88000 },
+        admin:{ assignee:'tom@clearsky-usa.com', assigneeName:'Thomas' },
         submittedAt:t(52), firstResponseAt:t(50.5), startedAt:t(46) },
 
-      { orgId:'concordenergyusa.com', clientName:'Concord Energy', contactName:'Dale Whitcomb',
-        contactEmail:'dale@concordenergyusa.com', projectName:'Cedar Rapids fleet depot',
-        projectType:'ev', address:'Cedar Rapids, IA', capacityMw:3.2, durationHrs:'',
-        scope:['sitemap','permit'], priority:'standard', value:31000,
-        status:'review', assignedTo:'tom@clearsky-usa.com', assignedName:'Thomas',
-        submittedAt:t(140), firstResponseAt:t(133), startedAt:t(120) },
+      { orgId:'nextnrg.com', purpose:'service', status:'quoted', priority:'standard',
+        customer:{ company:'NextNRG', contact:'Marcus Hale', email:'marcus@nextnrg.com' },
+        projectName:'Tampa microgrid screen', type:'microgrid', site:{ address:'Tampa, FL' },
+        scope:['intercon','cost'], quote:{ total:42000 },
+        admin:{ assignee:'tom@clearsky-usa.com', assigneeName:'Thomas' },
+        submittedAt:t(140), firstResponseAt:t(133) },
 
-      { orgId:'fenecon.com', clientName:'FENECON', contactName:'Jonas Mehl',
-        contactEmail:'j.mehl@fenecon.de', projectName:'Hamburg port microgrid',
-        projectType:'microgrid', address:'Hamburg, DE', capacityMw:8, durationHrs:6,
-        scope:['sitemap','oneline','intercon'], priority:'standard', value:52000,
-        status:'delivered', assignedTo:'tom@clearsky-usa.com', assignedName:'Thomas',
-        submittedAt:t(330), firstResponseAt:t(322), startedAt:t(300), deliveredAt:t(40),
-        deliveryNote:'Site map + one-line issued. Interconnection screen to follow.' },
+      { orgId:'spatco.com', purpose:'build', status:'submitted', priority:'standard',
+        customer:{ company:'SPATCO', contact:'Ellis Ward', email:'ellis@spatco.com' },
+        projectName:'Charlotte yard — self serve', type:'l2', site:{ address:'Charlotte, NC' },
+        scope:['sitemap'], submittedAt:t(88) },
 
-      { orgId:'iqgen.energy', clientName:'iQGen Technologies', contactName:'Priya Raman',
-        contactEmail:'priya@iqgen.energy', projectName:'Lubbock substation adjacency',
-        projectType:'bess', address:'Lubbock, TX', capacityMw:20, durationHrs:4,
-        scope:['sitemap','proforma'], priority:'rush', value:47000,
-        status:'completed', assignedTo:'tom@clearsky-usa.com', assignedName:'Thomas',
-        submittedAt:fromDone(240), firstResponseAt:fromDone(237.5), startedAt:fromDone(230),
-        deliveredAt:fromDone(30), completedAt:new Date(recentDone).toISOString() },
+      { orgId:'concordenergyusa.com', purpose:'service', status:'delivered', priority:'rush',
+        customer:{ company:'Concord Energy', contact:'Dale Whitcomb', email:'dale@concordenergyusa.com' },
+        projectName:'Cedar Rapids fleet depot', type:'dcfc', site:{ address:'Cedar Rapids, IA' },
+        scope:['plot','ahj'], quote:{ total:47000 },
+        admin:{ assignee:'tom@clearsky-usa.com', assigneeName:'Thomas' },
+        submittedAt:fd(240), firstResponseAt:fd(237.5), startedAt:fd(230),
+        deliveredAt:new Date(recentDone).toISOString() },
 
-      { orgId:'concordenergyusa.com', clientName:'Concord Energy', contactName:'Dale Whitcomb',
-        contactEmail:'dale@concordenergyusa.com', projectName:'Ankeny warehouse rooftop',
-        projectType:'solar+bess', address:'Ankeny, IA', capacityMw:2.1, durationHrs:2,
-        scope:['proposal'], priority:'standard', value:18500,
-        status:'completed', assignedTo:'tom@clearsky-usa.com', assignedName:'Thomas',
-        submittedAt:t(1100), firstResponseAt:t(1078), startedAt:t(1050),
-        deliveredAt:t(820), completedAt:t(800), paidAt:t(300) },
+      { orgId:'sunesol.com', purpose:'service', status:'delivered', priority:'standard',
+        customer:{ company:'SunESol', contact:'Dana Ruiz', email:'dana@sunesol.com' },
+        projectName:'Bakersfield rooftop', type:'solar', site:{ address:'Bakersfield, CA' },
+        scope:['cost'], quote:{ total:18500 },
+        admin:{ assignee:'tom@clearsky-usa.com', assigneeName:'Thomas' },
+        submittedAt:t(1100), firstResponseAt:t(1078), deliveredAt:t(820), paidAt:t(300) },
 
-      { orgId:'fenecon.com', clientName:'FENECON', contactName:'Anna Bauer',
-        contactEmail:'a.bauer@fenecon.com', projectName:'Ulm C&I retrofit',
-        projectType:'bess', address:'Ulm, DE', capacityMw:1.4, durationHrs:2,
-        scope:['sizing','proposal'], priority:'standard', value:12000,
-        status:'on_hold', assignedTo:'tom@clearsky-usa.com', assignedName:'Thomas',
-        submittedAt:t(500), firstResponseAt:t(492),
-        notes:'Client pausing until their landlord confirms roof loading.' },
-
-      { orgId:'iqgen.energy', clientName:'iQGen Technologies', contactName:'Marcus Hale',
-        contactEmail:'marcus@iqgen.energy', projectName:'El Paso data center screen',
-        projectType:'datacenter', address:'El Paso, TX', capacityMw:75, durationHrs:'',
-        scope:['intercon','proforma'], priority:'standard', value:0,
-        status:'new', submittedAt:t(26), notes:'Early look — no budget approved yet.' }
+      { orgId:'fenecon.com', purpose:'service', status:'declined', priority:'standard',
+        customer:{ company:'FENECON', contact:'Jonas Mehl', email:'j.mehl@fenecon.de' },
+        projectName:'Ulm C&I retrofit', type:'bess', site:{ address:'Ulm, DE' },
+        scope:['cost'], quote:{ total:12000 },
+        submittedAt:t(500), firstResponseAt:t(492) }
     ];
     var out = [];
     for (var i = 0; i < rows.length; i++) {
@@ -672,18 +702,42 @@
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  /* Anything in the raw document the console didn't map, rendered in the
+     drawer so a wrong field guess shows as visible data rather than a blank
+     row nobody notices. */
+  var KNOWN = ['orgId','org','tenant','purpose','mode','path','clientName','customer','company',
+    'contactName','contactEmail','contactPhone','contact','email','phone','role','primaryContact',
+    'projectName','name','project','site','title','projectType','type','scopeType','assetType',
+    'address','siteAddress','location','capacityMw','powerMw','power','durationHrs','durationHours',
+    'scope','scopes','deliverables','ledger','packages','notes','note','priority','urgency',
+    'dueDate','deadline','commissionRate','status','assignedTo','assignedName','projectId',
+    'linkedProjectId','admin','quote','acceptance','value','price','intakeId','createdBy',
+    'submittedAt','submitted','createdAt','updatedAt','firstResponseAt','startedAt','deliveredAt',
+    'paidAt','activity','internalNotes','_demo'];
+
+  function unmapped(req) {
+    var raw = req._raw || {}, out = {}, n = 0;
+    for (var k in raw) {
+      if (!raw.hasOwnProperty(k)) continue;
+      if (KNOWN.indexOf(k) >= 0) continue;
+      out[k] = raw[k]; n++;
+    }
+    return n ? out : null;
+  }
+
   global.OpsData = {
-    STATUS: STATUS, PRIORITY: PRIORITY, SCOPE: SCOPE, TYPES: TYPES,
-    statusOf: statusOf, priorityOf: priorityOf, labelFor: labelFor,
-    tenantName: tenantName,
-    ms: ms, fmtDate: fmtDate, fmtDateTime: fmtDateTime, fmtDur: fmtDur,
-    fmtAgo: fmtAgo, fmtMoney: fmtMoney, esc: esc,
-    targetMs: targetMs, responseMs: responseMs, answered: answered, clock: clock,
-    rate: rate, payout: payout, isEarned: isEarned, isPaid: isPaid,
-    dueMs: dueMs, cycleMs: cycleMs,
-    normalize: normalize, init: init, loadRequests: loadRequests,
-    patch: patch, create: create, createLinkedProject: createLinkedProject,
-    summarize: summarize, byTenant: byTenant, byStaff: byStaff,
-    sample: sample
+    STATUS:STATUS, PRIORITY:PRIORITY, SCOPE:SCOPE, TYPES:TYPES, PURPOSE:PURPOSE,
+    statusOf:statusOf, priorityOf:priorityOf, labelFor:labelFor,
+    tenantName:tenantName, isInternalOrg:isInternalOrg, orgs:orgs,
+    ms:ms, fmtDate:fmtDate, fmtDateTime:fmtDateTime, fmtDur:fmtDur,
+    fmtAgo:fmtAgo, fmtMoney:fmtMoney, esc:esc,
+    targetMs:targetMs, responseMs:responseMs, answered:answered, clock:clock,
+    value:value, rate:rate, payout:payout, payableStatus:payableStatus,
+    isEarned:isEarned, isPaid:isPaid, dueMs:dueMs, cycleMs:cycleMs,
+    inQueue:inQueue, pick:pick, unmapped:unmapped,
+    normalize:normalize, init:init, collectionName:collectionName,
+    loadRequests:loadRequests, loadOrgs:loadOrgs,
+    patch:patch, createLinkedProject:createLinkedProject,
+    summarize:summarize, byTenant:byTenant, byStaff:byStaff, sample:sample
   };
 })(window);
