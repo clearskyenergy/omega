@@ -825,6 +825,76 @@
     };
   }
 
+  /* ── Team ────────────────────────────────────────────────────────────────
+     The roster lives in omega_staff/{uid}. It fills itself: every ClearSky
+     person who signs into the console gets a doc on first sign-in (role
+     'none' — the create rule forbids self-granted power), and from then on
+     they exist in every Assign dropdown. Roles are then set by an admin on
+     the Team page. Nobody is hand-typed into a list that goes stale.
+
+     Note on enforcement: a @clearsky-usa.com / @csebuilders.com address is an
+     administrator BY DOMAIN in the rules (isAdmin), regardless of the role
+     field. The role here governs two real things today: whether an OUTSIDE
+     email gets console powers at all (role admin/rep = isOmegaStaff), and how
+     a person is labelled and offered in assignment. Tightening domain users
+     down by role is a rules change to make deliberately, not a side effect
+     of this page. */
+  function loadStaff() {
+    if (!_db) return Promise.resolve([]);
+    return _db.collection('omega_staff').get().then(function (snap) {
+      var out = [];
+      snap.forEach(function (d) {
+        var v = d.data() || {};
+        out.push({
+          uid:    d.id,
+          email:  String(v.email || '').toLowerCase(),
+          name:   v.name || v.email || d.id,
+          role:   v.role || 'none',
+          active: v.active !== false
+        });
+      });
+      out.sort(function (a, b) { return (a.name || a.email).localeCompare(b.name || b.email); });
+      return out;
+    });
+  }
+
+  /* Create-if-missing, never overwrite: the create rule pins role to 'none'
+     and the email to the token, so this can't grant anything — it only makes
+     the person visible to admins and to the Assign dropdown. */
+  function ensureSelfStaff(user) {
+    if (!_db || !user || !user.uid) return Promise.resolve(null);
+    var ref = _db.collection('omega_staff').doc(user.uid);
+    return ref.get().then(function (snap) {
+      if (snap.exists) return null;
+      return ref.set({
+        email:     String(user.email || '').toLowerCase(),
+        name:      user.displayName || user.email || '',
+        role:      'none',
+        active:    true,
+        createdAt: stamp()
+      });
+    })['catch'](function (e) {
+      console.warn('[ops] staff self-registration skipped:', e && e.message);
+      return null;
+    });
+  }
+
+  /* Admin-only by rules; a rep calling this gets permission-denied, which the
+     Team page reports rather than hiding. */
+  function setStaffRole(uid, patch) {
+    if (!_db) return Promise.reject(new Error('No database connection.'));
+    var clean = {};
+    if (patch.role != null)   clean.role   = String(patch.role);
+    if (patch.active != null) clean.active = !!patch.active;
+    if (patch.name)           clean.name   = String(patch.name);
+    clean.updatedAt = stamp();
+    return _db.collection('omega_staff').doc(uid).set(clean, { merge: true });
+  }
+
+  function assignableStaff(list) {
+    return (list || []).filter(function (s) { return s.active && s.email; });
+  }
+
   /* ── Roll-ups ────────────────────────────────────────────────────────────
      Drafts and declined quotes stay out of every average. A draft nobody
      sent is not a response time we missed. */
@@ -1160,6 +1230,8 @@
     priorityKey:priorityKey,
     normalize:normalize, init:init, collectionName:collectionName,
     loadRequests:loadRequests, loadOrgs:loadOrgs,
+    loadStaff:loadStaff, ensureSelfStaff:ensureSelfStaff, setStaffRole:setStaffRole,
+    assignableStaff:assignableStaff,
     patch:patch, createLinkedProject:createLinkedProject,
     summarize:summarize, byTenant:byTenant, byStaff:byStaff, sample:sample
   };

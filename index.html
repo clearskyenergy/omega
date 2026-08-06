@@ -439,6 +439,9 @@ button{font-family:inherit}
     <button class="sn-item" data-view="earnings" onclick="go('earnings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       <span>Earnings</span></button>
+    <button class="sn-item" data-view="team" onclick="go('team')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>Team</span></button>
 
     <div class="sn-group">Tools</div>
     <a class="sn-item" href="#" onclick="openIntake();return false">
@@ -566,6 +569,29 @@ button{font-family:inherit}
     </section>
 
     <!-- ── EARNINGS ── -->
+    <!-- ── TEAM ── -->
+    <section class="view" id="v-team">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow">Accounts</div>
+          <h1>Team</h1>
+          <p>Everyone who has signed into the console. New ClearSky sign-ins appear here
+             automatically and in every <b>Assign</b> dropdown; roles are set here by an
+             administrator. A @clearsky-usa.com address is an administrator by domain
+             regardless of the role shown.</p>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="tbl" style="width:100%">
+          <thead><tr><th style="text-align:left;padding:12px 18px">Person</th>
+            <th style="text-align:left;padding:12px 18px">Role</th>
+            <th style="text-align:left;padding:12px 18px">Active</th>
+            <th style="text-align:left;padding:12px 18px"></th></tr></thead>
+          <tbody id="teamRows"><tr><td style="padding:18px" colspan="4">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="view" id="v-earnings">
       <div class="ph">
         <div>
@@ -633,7 +659,7 @@ var auth, db, ME = { email:'', name:'', uid:'' };
 var STATE = {
   reqs: [], loaded:false, demo:false, view:'dashboard',
   scope:'all', queueOwner:'all', boardOwner:'all', earnScope:'mine',
-  openId:null, clientOpen:null
+  openId:null, clientOpen:null, staff:[]
 };
 
 /* ── Boot ─────────────────────────────────────────────────────────────── */
@@ -668,6 +694,10 @@ window._omegaReady = function(){
     ME.uid   = user.uid;
     ME.name  = user.displayName || ME.email.split('@')[0];
     D.init(db, ME);
+    /* Self-registration: first sign-in creates this person's omega_staff doc
+       (role 'none'), which is what makes them appear on the Team page and in
+       the Assign dropdowns without anyone typing them in. */
+    D.ensureSelfStaff(user);
     showApp(user);
   });
 })();
@@ -768,6 +798,10 @@ function refresh(manual){
      tenant list falls back to orgIds observed on records — so it never
      blocks the queue itself. */
   return D.loadOrgs()['catch'](function(){ return []; }).then(function(){
+    /* Roster rides along with every refresh; allowed to fail so a rules
+       hiccup on omega_staff never blocks the queue itself. */
+    return D.loadStaff().then(function(staff){ STATE.staff = staff; })['catch'](function(){});
+  }).then(function(){
     return D.loadRequests();
   }).then(function(rows){
     STATE.reqs = rows; STATE.loaded = true; STATE.demo = false;
@@ -908,6 +942,7 @@ function renderView(){
   else if (STATE.view === 'board') renderBoard();
   else if (STATE.view === 'clients') renderClients();
   else if (STATE.view === 'earnings') renderEarnings();
+  else if (STATE.view === 'team') renderTeam();
 }
 
 function renderCounts(){
@@ -1664,6 +1699,18 @@ function actions(r){
   function btn(label, fn, pri){
     b.push('<button class="btn-sm'+(pri?' pri':'')+'" onclick="'+fn+'">'+label+'</button>');
   }
+  var team = D.assignableStaff(STATE.staff || []);
+  if (team.length){
+    b.push('<select class="btn-sm" style="max-width:180px" '
+      + 'onchange="assignTo(\''+id+'\', this.value)" title="Assign this intake">'
+      + '<option value=""'+(r.assignedTo?'':' selected')+'>Assign\u2026</option>'
+      + team.map(function(s){
+          return '<option value="'+D.esc(s.email)+'"'
+            + (r.assignedTo === s.email ? ' selected' : '') + '>'
+            + D.esc(s.name || s.email) + '</option>';
+        }).join('')
+      + '</select>');
+  }
   if (!r.assignedTo || r.assignedTo !== ME.email) btn('Assign to me', 'assignMe(\''+id+'\')');
   if (!D.answered(r)) btn('Reply &amp; acknowledge', 'acknowledge(\''+id+'\')', true);
 
@@ -1757,6 +1804,55 @@ function apply(id, fields, note, msg){
 /* ISO strings, matching omega-intake.js. A Firestore Timestamp written here
    renders as "Invalid Date" in the tenant's project list — see ops-data.js. */
 function ts(){ return new Date().toISOString(); }
+
+/* Assign to any active teammate. Same field assignMe writes, so both paths
+   read back identically everywhere — queue, drawer, earnings. */
+function assignTo(id, email){
+  if (!email){ return; }
+  var s = (STATE.staff || []).filter(function(x){ return x.email === email; })[0];
+  if (!s) return;
+  apply(id, { 'admin.assignee': s.email, 'admin.assigneeName': s.name || s.email },
+        { type:'assign', text:'Assigned to ' + (s.name || s.email) },
+        'Assigned to ' + (s.name || s.email));
+}
+
+function renderTeam(){
+  var host = document.getElementById('teamRows');
+  var team = STATE.staff || [];
+  if (!team.length){
+    host.innerHTML = '<tr><td style="padding:18px" colspan="4">Nobody yet \u2014 the roster '
+      + 'fills itself as people sign in.</td></tr>';
+    return;
+  }
+  host.innerHTML = team.map(function(s){
+    var domainAdmin = /@(clearsky-usa|csebuilders)\.com$/.test(s.email);
+    return '<tr style="border-top:1px solid var(--sap-card-border)">'
+      + '<td style="padding:12px 18px"><b>'+D.esc(s.name || s.email)+'</b>'
+        + '<div style="font-size:12px;color:#8FA0AE">'+D.esc(s.email)
+        + (domainAdmin ? ' \u00b7 admin by domain' : '') + '</div></td>'
+      + '<td style="padding:12px 18px"><select id="tr-role-'+D.esc(s.uid)+'" class="btn-sm">'
+        + ['admin','rep','none'].map(function(rr){
+            return '<option value="'+rr+'"'+(s.role===rr?' selected':'')+'>'+rr+'</option>';
+          }).join('') + '</select></td>'
+      + '<td style="padding:12px 18px"><input type="checkbox" id="tr-act-'+D.esc(s.uid)+'"'
+        + (s.active ? ' checked' : '') + '></td>'
+      + '<td style="padding:12px 18px"><button class="btn-sm" '
+        + 'onclick="saveStaff(\''+D.esc(s.uid)+'\')">Save</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function saveStaff(uid){
+  var role = document.getElementById('tr-role-'+uid).value;
+  var act  = document.getElementById('tr-act-'+uid).checked;
+  D.setStaffRole(uid, { role: role, active: act }).then(function(){
+    toast('Saved \u2014 role ' + role + (act ? '' : ' \u00b7 deactivated'));
+    return D.loadStaff().then(function(staff){ STATE.staff = staff; renderTeam(); });
+  })['catch'](function(e){
+    var perm = e && (e.code === 'permission-denied' || /permission/i.test(e.message||''));
+    toast(perm ? 'Only administrators can change roles.' : ('Couldn\u2019t save: ' + (e.message||'error')));
+  });
+}
 
 /* The assignee lives in the admin map, which is where intake-admin.html
    reads it from. Writing a top-level assignedTo would assign it here and
