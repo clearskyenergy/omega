@@ -442,6 +442,9 @@ button{font-family:inherit}
     <button class="sn-item" data-view="team" onclick="go('team')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       <span>Team</span></button>
+    <button class="sn-item" data-view="settings" onclick="go('settings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Settings</span></button>
 
     <div class="sn-group">Tools</div>
     <a class="sn-item" href="#" onclick="openIntake();return false">
@@ -569,6 +572,43 @@ button{font-family:inherit}
     </section>
 
     <!-- ── EARNINGS ── -->
+    <!-- ── SETTINGS ── -->
+    <section class="view" id="v-settings">
+      <div class="ph">
+        <div>
+          <div class="ph-eyebrow">Account</div>
+          <h1>Settings</h1>
+          <p>Your name and sign-in. Changes apply everywhere immediately \u2014 the Team
+             page, Assign dropdowns, and activity lines \u2014 no deploy involved.</p>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:560px;padding:20px 22px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#8FA0AE;margin-bottom:12px">Profile</div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px" for="set-name">Display name</label>
+        <input id="set-name" class="btn-sm" style="width:100%;text-align:left" placeholder="Your name">
+        <div style="font-size:12px;color:#8FA0AE;margin:8px 0 12px">
+          Signed in as <b id="set-email"></b></div>
+        <button class="btn-sm pri" onclick="saveProfile()">Save name</button>
+      </div>
+
+      <div class="card" style="max-width:560px;padding:20px 22px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#8FA0AE;margin-bottom:12px">Password</div>
+        <div id="set-pw-google" style="display:none;font-size:13px;color:#5A7180;line-height:1.5">
+          This account signs in with Google, so its password is managed by Google \u2014
+          there\u2019s nothing to change here.</div>
+        <div id="set-pw-form">
+          <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px" for="set-pw-cur">Current password</label>
+          <input id="set-pw-cur" type="password" class="btn-sm" style="width:100%;text-align:left" autocomplete="current-password">
+          <label style="display:block;font-size:12.5px;font-weight:600;margin:12px 0 5px" for="set-pw-new">New password</label>
+          <input id="set-pw-new" type="password" class="btn-sm" style="width:100%;text-align:left" autocomplete="new-password">
+          <label style="display:block;font-size:12.5px;font-weight:600;margin:12px 0 5px" for="set-pw-conf">Confirm new password</label>
+          <input id="set-pw-conf" type="password" class="btn-sm" style="width:100%;text-align:left" autocomplete="new-password">
+          <div style="margin-top:14px"><button class="btn-sm pri" onclick="changePassword()">Change password</button></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ── TEAM ── -->
     <section class="view" id="v-team">
       <div class="ph">
@@ -943,6 +983,7 @@ function renderView(){
   else if (STATE.view === 'clients') renderClients();
   else if (STATE.view === 'earnings') renderEarnings();
   else if (STATE.view === 'team') renderTeam();
+  else if (STATE.view === 'settings') renderSettings();
 }
 
 function renderCounts(){
@@ -1814,6 +1855,67 @@ function assignTo(id, email){
   apply(id, { 'admin.assignee': s.email, 'admin.assigneeName': s.name || s.email },
         { type:'assign', text:'Assigned to ' + (s.name || s.email) },
         'Assigned to ' + (s.name || s.email));
+}
+
+function renderSettings(){
+  document.getElementById('set-name').value = ME.name || '';
+  document.getElementById('set-email').textContent = ME.email;
+  /* Password change only makes sense for email/password accounts. A Google
+     sign-in has no password here, and offering the form anyway just produces
+     a confusing auth error at the last step. */
+  var u = auth.currentUser;
+  var hasPw = !!(u && u.providerData && u.providerData.some(function(p){ return p.providerId === 'password'; }));
+  document.getElementById('set-pw-form').style.display  = hasPw ? '' : 'none';
+  document.getElementById('set-pw-google').style.display = hasPw ? 'none' : '';
+}
+
+/* Name lives in TWO places and both must move together: the Firebase Auth
+   profile (what greets you, what new activity lines use) and the omega_staff
+   doc (what the Team page and Assign dropdowns read). */
+function saveProfile(){
+  var name = (document.getElementById('set-name').value || '').trim();
+  if (!name){ toast('Enter a name first.'); return; }
+  var u = auth.currentUser;
+  if (!u){ toast('Not signed in.'); return; }
+  u.updateProfile({ displayName: name }).then(function(){
+    return D.setStaffRole(u.uid, { name: name });
+  }).then(function(){
+    ME.name = name;
+    document.getElementById('tb-name').textContent = name;
+    toast('Name updated everywhere.');
+    return D.loadStaff().then(function(s){ STATE.staff = s; });
+  })['catch'](function(e){
+    toast('Couldn\u2019t save name: ' + ((e && e.message) || 'error'));
+  });
+}
+
+function changePassword(){
+  var cur  = document.getElementById('set-pw-cur').value;
+  var next = document.getElementById('set-pw-new').value;
+  var conf = document.getElementById('set-pw-conf').value;
+  if (!cur){ toast('Enter your current password.'); return; }
+  if (next.length < 6){ toast('New password must be at least 6 characters.'); return; }
+  if (next !== conf){ toast('New passwords don\u2019t match.'); return; }
+  var u = auth.currentUser;
+  /* Firebase requires a recent sign-in to change a password. Re-authenticate
+     with the current password first, every time — it doubles as proof the
+     person at the keyboard actually knows it. */
+  var cred = firebase.auth.EmailAuthProvider.credential(u.email, cur);
+  u.reauthenticateWithCredential(cred).then(function(){
+    return u.updatePassword(next);
+  }).then(function(){
+    document.getElementById('set-pw-cur').value = '';
+    document.getElementById('set-pw-new').value = '';
+    document.getElementById('set-pw-conf').value = '';
+    toast('Password changed.');
+  })['catch'](function(e){
+    var code = (e && e.code) || '';
+    toast(code === 'auth/wrong-password' || code === 'auth/invalid-credential'
+      ? 'Current password is incorrect.'
+      : code === 'auth/weak-password'
+        ? 'That password is too weak \u2014 pick a longer one.'
+        : 'Couldn\u2019t change password: ' + ((e && e.message) || 'error'));
+  });
 }
 
 function renderTeam(){
