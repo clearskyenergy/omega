@@ -917,25 +917,40 @@
     return s;
   }
 
-  /* Every tenant the console knows about, from all three sources, minus
-     ClearSky's own orgs. */
+  /* Every tenant the console knows about, from all three sources.
+
+     INTERNAL ORGS ARE SHOWN, NOT HIDDEN. The first version silently dropped
+     clearsky-usa.com / csebuilders.com records everywhere, which meant a
+     submission from the demo portal (whose config points at ClearSky's own
+     org) wrote to Firestore successfully and then appeared NOWHERE — the
+     worst kind of missing, because nothing was actually lost. The rule now:
+     every record that reaches intake_projects registers in this console.
+     Internal rows are flagged so they read as what they are rather than as
+     customers, and stay OUT of the revenue metrics (see summarize callers). */
   function byTenant(reqs) {
     var map = {}, i, r, key;
 
+    function label(key, base) {
+      return isInternalOrg(key) ? (base || tenantName(key)) + ' \u00b7 internal' : (base || tenantName(key));
+    }
+
     for (i = 0; i < _orgs.length; i++) {
       key = _orgs[i].orgId;
-      if (!key || isInternalOrg(key) || _orgs[i].active === false) continue;
-      map[key] = { orgId:key, name:_orgs[i].name || tenantName(key), requests:[], source:'registry' };
+      if (!key || _orgs[i].active === false) continue;
+      map[key] = { orgId:key, name:label(key, _orgs[i].name), internal:isInternalOrg(key),
+                   requests:[], source:'registry' };
     }
     var over = ops().tenantNames || {};
     for (key in over) {
-      if (!over.hasOwnProperty(key) || isInternalOrg(key)) continue;
-      if (!map[key]) map[key] = { orgId:key, name:over[key], requests:[], source:'config' };
+      if (!over.hasOwnProperty(key)) continue;
+      if (!map[key]) map[key] = { orgId:key, name:label(key, over[key]), internal:isInternalOrg(key),
+                                  requests:[], source:'config' };
     }
     for (i = 0; i < reqs.length; i++) {
       r = reqs[i]; key = r.orgId;
-      if (!key || isInternalOrg(key)) continue;
-      if (!map[key]) map[key] = { orgId:key, name:tenantName(key, reqs), requests:[], source:'observed' };
+      if (!key) continue;
+      if (!map[key]) map[key] = { orgId:key, name:label(key), internal:isInternalOrg(key),
+                                  requests:[], source:'observed' };
       map[key].requests.push(r);
     }
 
