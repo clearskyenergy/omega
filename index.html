@@ -456,6 +456,9 @@ button{font-family:inherit}
     <a class="sn-item" href="/projects.html">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       <span>My projects</span></a>
+    <a class="sn-item" href="#" onclick="openWorkbook();return false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h3l-1 3h3"/></svg>
+      <span>EV cost workbook</span></a>
   </nav>
 
   <main id="main">
@@ -790,6 +793,22 @@ function intakeUrl(orgId){
   return url;
 }
 function openIntake(orgId){ window.open(intakeUrl(orgId), '_blank'); }
+
+/* Same arrangement as intake: the workbook lives on tools.csebuilders.com
+   with every other OMEGA tool, and this console links to it rather than
+   shipping a copy. Two copies of a pricing tool is how two versions of a
+   number reach a customer.
+
+   The tool gates itself on a signed-in clearsky-usa.com / csebuilders.com
+   account, so this link is a convenience, not the access control. */
+function workbookUrl(orgId){
+  var base = (window.CLEARSKY_CONFIG.ops || {}).workbookUrl
+          || 'https://tools.csebuilders.com/ev-cost-workbook.html';
+  var url = base;
+  if (orgId) url += (base.indexOf('?') >= 0 ? '&' : '?') + 'org=' + encodeURIComponent(orgId);
+  return url;
+}
+function openWorkbook(orgId){ window.open(workbookUrl(orgId), '_blank'); }
 
 /* ── Auth actions ─────────────────────────────────────────────────────── */
 function signInWithGoogle(){
